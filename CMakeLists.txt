@@ -114,16 +114,16 @@ catkin_package(
 ## Build ##
 ###########
 
-ADD_DEFINITIONS ( -Wall -Wextra -Wno-unused-parameter -Werror)
-
 ## Specify additional locations of header files
 ## Your package locations should be listed before other locations
-# include_directories(include)
+include_directories(gesture_recognition/include grt/ ${catkin_INCLUDE_DIRS})
 
-## Declare a C++ library
-# add_library(gesture_recognition
-#   src/${PROJECT_NAME}/gesture_recognition.cpp
-# )
+set(BUILD_TESTS "OFF")
+## Add C++ libraries
+add_subdirectory(grt/build)
+
+ADD_DEFINITIONS ( -Wall -Wextra -Wno-unused-parameter -Werror)
+add_subdirectory(lib)
 
 ## Add cmake target dependencies of the library
 ## as an example, code may need to be generated before libraries

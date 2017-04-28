@@ -1,5 +1,4 @@
-<?xml version="1.0"?>
-<package>
+<package format="2">
   <name>gesture_recognition</name>
   <version>0.0.1</version>
   <description>The gesture_recognition package</description>
