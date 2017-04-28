@@ -118,6 +118,7 @@ catkin_package(
 ## Your package locations should be listed before other locations
 include_directories(gesture_recognition/include grt/ ${catkin_INCLUDE_DIRS})
 
+set(BUILD_EXAMPLES "OFF")
 set(BUILD_TESTS "OFF")
 ## Add C++ libraries
 add_subdirectory(grt/build)
