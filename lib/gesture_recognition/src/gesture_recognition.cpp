@@ -1,5 +1,4 @@
-#include <GRT/GRT.h>
-#include "robot_perception/aruco_client.h"
+#include "gesture_recognition.h"
 
 using namespace std;
 

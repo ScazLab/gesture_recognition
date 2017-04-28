@@ -6,7 +6,10 @@
 
 #include "robot_utils/utils.h"
 
-class GestureRec : public ARucoClient
+#include <GRT/GRT.h>
+#include "robot_perception/aruco_client.h"
+
+class GestureRec // : public ARucoClient
 {
 private:
     /**
