@@ -123,7 +123,7 @@ set(BUILD_TESTS "OFF")
 ## Add C++ libraries
 add_subdirectory(grt/build)
 
-ADD_DEFINITIONS ( -Wall -Wextra -Wno-unused-parameter -Werror)
+ADD_DEFINITIONS ( -Wall -Wno-unused-parameter -Werror)
 add_subdirectory(lib)
 
 ## Add cmake target dependencies of the library
