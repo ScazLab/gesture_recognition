@@ -12,7 +12,9 @@ find_package(catkin REQUIRED COMPONENTS
              roscpp
              aruco_msgs
              aruco_ros
-             rosconsole)
+             rosconsole
+             message_generation
+             )
 
 ## System dependencies are found with CMake's conventions
 # find_package(Boost REQUIRED COMPONENTS system)
@@ -54,12 +56,11 @@ find_package(catkin REQUIRED COMPONENTS
 #   Message2.msg
 # )
 
-## Generate services in the 'srv' folder
-# add_service_files(
-#   FILES
-#   Service1.srv
-#   Service2.srv
-# )
+# Generate services in the 'srv' folder
+add_service_files(
+  FILES
+  RecordSample.srv
+)
 
 ## Generate actions in the 'action' folder
 # add_action_files(
@@ -69,10 +70,10 @@ find_package(catkin REQUIRED COMPONENTS
 # )
 
 ## Generate added messages and services with any dependencies listed here
-# generate_messages(
-#   DEPENDENCIES
-#   std_msgs  # Or other packages containing msgs
-# )
+generate_messages(
+  DEPENDENCIES
+  std_msgs  # Or other packages containing msgs
+)
 
 ################################################
 ## Declare ROS dynamic reconfigure parameters ##
@@ -104,10 +105,10 @@ find_package(catkin REQUIRED COMPONENTS
 ## CATKIN_DEPENDS: catkin_packages dependent projects also need
 ## DEPENDS: system dependencies of this project that dependent projects also need
 catkin_package(
-#  INCLUDE_DIRS include
-#  LIBRARIES gesture_recognition
-#  CATKIN_DEPENDS other_catkin_pkg
-#  DEPENDS system_lib
+ # INCLUDE_DIRS include
+ LIBRARIES gesture_recognition
+ CATKIN_DEPENDS message_runtime
+ DEPENDS system_lib
 )
 
 ###########
@@ -129,19 +130,22 @@ add_subdirectory(lib)
 ## Add cmake target dependencies of the library
 ## as an example, code may need to be generated before libraries
 ## either from message generation or dynamic reconfigure
-# add_dependencies(gesture_recognition ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+add_dependencies(gesture_recognition ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 
 ## Declare a C++ executable
-# add_executable(gesture_recognition_node src/gesture_recognition_node.cpp)
+add_executable(gesture_recognition_node lib/gesture_recognition/src/gesture_recognition_node.cpp)
+
+## Specify libraries to link a library or executable target against
+target_link_libraries(gesture_recognition_node
+  ${catkin_LIBRARIES}
+  gesture_recognition
+)
 
 ## Add cmake target dependencies of the executable
 ## same as for the library above
-# add_dependencies(gesture_recognition_node ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+add_dependencies(gesture_recognition_node ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 
-## Specify libraries to link a library or executable target against
-# target_link_libraries(gesture_recognition_node
-#   ${catkin_LIBRARIES}
-# )
+
 
 #############
 ## Install ##

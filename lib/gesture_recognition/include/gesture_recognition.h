@@ -4,15 +4,16 @@
 #include <ros/ros.h>
 #include <ros/console.h>
 #include <aruco_msgs/MarkerArray.h>
+#include <gesture_recognition/RecordSample.h>
+
 // #include "robot_utils/utils.h"
 
 #include <GRT/GRT.h>
 // #include "../../../../baxter_collaboration/baxter_collaboration_lib/include/robot_perception/aruco_client.h"
 
-class GestureRec // : public ARucoClient
+class GestureRec
 {
 private:
-
 
     ros::NodeHandle _nh;
 
@@ -39,6 +40,8 @@ private:
     geometry_msgs::Point        curr_marker_pos;
     geometry_msgs::Quaternion   curr_marker_ori;
 
+    ros::ServiceServer service;
+
 
 
 protected:
@@ -47,6 +50,9 @@ protected:
      * @param msg the topic message
      */
     void ARucoCb(const aruco_msgs::MarkerArray& msg);
+
+    bool recordCb(gesture_recognition::RecordSample::Request  &req,
+                  gesture_recognition::RecordSample::Response &res);
 
         /*
      * Check availability of the ARuco data

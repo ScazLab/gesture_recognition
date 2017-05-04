@@ -9,6 +9,7 @@ include_directories(${PROJECT_SOURCE_DIR}/${PROJECT_NAME}/include)
 
 add_library(${PROJECT_NAME} ${PROJECT_NAME}/include/gesture_recognition.h
                             ${PROJECT_NAME}/src/gesture_recognition.cpp
+                            # ${PROJECT_NAME}/src/gesture_recognition_node.cpp
 )
 
 target_link_libraries(${PROJECT_NAME} ${catkin_LIBRARIES} )

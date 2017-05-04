@@ -8,6 +8,15 @@ GestureRec::GestureRec(string name, string limb) : _nh(name), _limb(limb),
 {
     _aruco_sub = _nh.subscribe("/aruco_marker_publisher/markers",
                                3, &GestureRec::ARucoCb, this);
+
+    std::string topic = "/gesture_recognition/record_sample";
+    service = _nh.advertiseService(topic, &GestureRec::recordCb, this);
+}
+
+bool GestureRec::recordCb(gesture_recognition::RecordSample::Request  &req,
+                          gesture_recognition::RecordSample::Response &res)
+{
+    return true;
 }
 
 void GestureRec::ARucoCb(const aruco_msgs::MarkerArray& msg)
