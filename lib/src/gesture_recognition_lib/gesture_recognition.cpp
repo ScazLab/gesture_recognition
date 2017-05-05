@@ -1,4 +1,4 @@
-#include "gesture_recognition.h"
+#include "gesture_recognition_lib/gesture_recognition.h"
 
 using namespace std;
 

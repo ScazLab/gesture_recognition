@@ -105,10 +105,10 @@ generate_messages(
 ## CATKIN_DEPENDS: catkin_packages dependent projects also need
 ## DEPENDS: system dependencies of this project that dependent projects also need
 catkin_package(
- # INCLUDE_DIRS include
- LIBRARIES gesture_recognition
- CATKIN_DEPENDS message_runtime
- DEPENDS system_lib
+  INCLUDE_DIRS lib/include grt
+  LIBRARIES gesture_recognition_lib
+  # CATKIN_DEPENDS message_runtime
+  # DEPENDS system_lib
 )
 
 ###########
@@ -117,7 +117,7 @@ catkin_package(
 
 ## Specify additional locations of header files
 ## Your package locations should be listed before other locations
-include_directories(gesture_recognition/include grt/ ${catkin_INCLUDE_DIRS})
+include_directories(lib/include grt ${catkin_INCLUDE_DIRS})
 
 set(BUILD_EXAMPLES "OFF")
 set(BUILD_TESTS "OFF")
@@ -127,25 +127,15 @@ add_subdirectory(grt/build)
 ADD_DEFINITIONS ( -Wall -Wno-unused-parameter -Werror)
 add_subdirectory(lib)
 
-## Add cmake target dependencies of the library
-## as an example, code may need to be generated before libraries
-## either from message generation or dynamic reconfigure
-add_dependencies(gesture_recognition ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
-
 ## Declare a C++ executable
-add_executable(gesture_recognition_node lib/gesture_recognition/src/gesture_recognition_node.cpp)
-
-## Specify libraries to link a library or executable target against
-target_link_libraries(gesture_recognition_node
-  ${catkin_LIBRARIES}
-  gesture_recognition
-)
+add_executable(gesture_recognition_node src/gesture_recognition_node.cpp)
 
 ## Add cmake target dependencies of the executable
 ## same as for the library above
 add_dependencies(gesture_recognition_node ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 
-
+## Specify libraries to link a library or executable target against
+target_link_libraries(gesture_recognition_node gesture_recognition_lib ${catkin_LIBRARIES})
 
 #############
 ## Install ##
