@@ -15,7 +15,7 @@ int main(int argc, char ** argv)
     printf("\n");
     ROS_INFO("use_robot flag set to %s", use_robot==true?"true":"false");
 
-    GestureRec gesture_recognition("gesture_recognition", "left");
+    GestureRec gesture_recognition("gesture_recognition", "left", !use_robot);
 
     ros::spin();
     return 0;

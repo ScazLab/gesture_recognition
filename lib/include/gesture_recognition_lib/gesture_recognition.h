@@ -6,10 +6,7 @@
 #include <aruco_msgs/MarkerArray.h>
 #include <gesture_recognition/RecordSample.h>
 
-// #include "robot_utils/utils.h"
-
 #include <GRT/GRT.h>
-// #include "../../../../baxter_collaboration/baxter_collaboration_lib/include/robot_perception/aruco_client.h"
 
 class GestureRec
 {
@@ -86,7 +83,7 @@ protected:
      * @brief records 1 second of ARuco data
      * @return true/false if success/failure
      */
-    bool recordSample(GRT::ClassificationData trainingData, GRT::UINT gestureLabel);
+    GRT::ClassificationDataStream recordSample(GRT::ClassificationDataStream trainingData, GRT::UINT gestureLabel);
 
     /**
      * @brief record & save sample data
@@ -97,7 +94,7 @@ protected:
 
 
 public:
-    GestureRec(std::string name, std::string limb);
+    GestureRec(std::string name, std::string limb, bool _no_robot);
     ~GestureRec();
 
 };

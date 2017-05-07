@@ -21,7 +21,7 @@
     <arg name="useRobot"            default="true"/>
     <param name="gesture_recognition/use_robot" value="$arg(useRobot)"/>
 
-    <node pkg="gesture_recognition" type="gesture_recognition" name="gesture_recognition" output="screen" respawn="true"></node>
+    <node pkg="gesture_recognition" type="gesture_recognition_node" name="gesture_recognition" output="screen" respawn="true"></node>
 
     <!-- <include file="$(find rosbridge_server)/launch/rosbridge_websocket.launch"/> -->
     <!-- <include file="$(find trac_ik_baxter)/launch/ik_server.launch"/> -->

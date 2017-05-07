@@ -2,7 +2,7 @@
 
 using namespace std;
 
-GestureRec::GestureRec(string name, string limb) : _nh(name), _limb(limb),
+GestureRec::GestureRec(string name, string limb, bool _no_robot) : _nh(name), _limb(limb),
                                       aruco_ok(false), markers_found(false),
                                          marker_found(false), marker_id(-1)
 {
@@ -16,6 +16,31 @@ GestureRec::GestureRec(string name, string limb) : _nh(name), _limb(limb),
 bool GestureRec::recordCb(gesture_recognition::RecordSample::Request  &req,
                           gesture_recognition::RecordSample::Response &res)
 {
+
+    GRT::ClassificationDataStream trainingData;
+    trainingData.setNumDimensions(3);
+    GRT::UINT gestureLabel = req.label;
+
+    setMarkerID(19);
+
+    res.success = false;
+    ROS_INFO("Ready to record a gesture!");
+    ROS_INFO("Recording in 5 seconds...");
+    ros::Duration(1.0).sleep();
+    ROS_INFO("Recording in 4 seconds...");
+    ros::Duration(1.0).sleep();
+    ROS_INFO("Recording in 3 seconds...");
+    ros::Duration(1.0).sleep();
+    ROS_INFO("Recording in 2 seconds...");
+    ros::Duration(1.0).sleep();
+    ROS_INFO("Recording in 1 second...");
+    ros::Duration(1.0).sleep();
+
+    trainingData = recordSample(trainingData, gestureLabel);
+
+    trainingData.printStats();
+    res.response = "Recorded Sample";
+    res.success = true;
     return true;
 }
 
@@ -60,44 +85,45 @@ void GestureRec::ARucoCb(const aruco_msgs::MarkerArray& msg)
     }
 }
 
-bool GestureRec::recordSample(GRT::ClassificationData trainingData, GRT::UINT gestureLabel)
+GRT::ClassificationDataStream GestureRec::recordSample(GRT::ClassificationDataStream trainingData, GRT::UINT gestureLabel)
 {
-    vector<vector<vector<double>>> gesture;
+
+    GRT::MatrixFloat gesture;
+    GRT::Vector< GRT:: VectorFloat > gestureVec;
     ros::Time time_start = ros::Time::now();
 
     while( ros::Time::now().toSec() - time_start.toSec() < 1)
     {
-        vector<vector<double>> sample(2);
+        GRT::VectorFloat sample(3);
+        sample[0] = curr_marker_pos.x;
+        sample[1] = curr_marker_pos.y;
+        sample[2] = curr_marker_pos.z;
 
-        vector<double> position(3);
-        position[0] = curr_marker_pos.x;
-        position[1] = curr_marker_pos.y;
-        position[2] = curr_marker_pos.z;
+        // sample[3] = curr_marker_ori.x;
+        // sample[4] = curr_marker_ori.y;
+        // sample[5] = curr_marker_ori.z;
+        // sample[6] = curr_marker_ori.w;
 
-        vector<double> orientation(4);
-        orientation[0] = curr_marker_ori.x;
-        orientation[1] = curr_marker_ori.y;
-        orientation[2] = curr_marker_ori.z;
-        orientation[3] = curr_marker_ori.w;
-
-        sample[0] = position;
-        sample[1] = orientation;
-
-        gesture.push_back(sample);
+        gestureVec.push_back(sample);
     }
 
-    // trainingData.addSample( gestureLabel, gesture);
+    gesture = gestureVec;
 
-    return true;
+    trainingData.addSample(gestureLabel, gesture);
+
+    ROS_INFO("training data should have 1 sample");
+    // trainingData.save("TrainingData.csv");
+
+    return trainingData;
 }
 
 bool GestureRec::recTrainingData()
 {
     //Create a new instance of the ClassificationData
-    GRT::ClassificationData trainingData;
-    GRT::UINT gestureLabel = 1;
+    // GRT::ClassificationData trainingData;
+    // GRT::UINT gestureLabel = 1;
 
-    if (!recordSample(trainingData, gestureLabel)) return false;
+    // if (!recordSample(trainingData, gestureLabel)) return false;
 
     // bool saveResult = trainingData.save( "TrainingData.grt" );
 

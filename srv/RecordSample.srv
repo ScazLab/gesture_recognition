@@ -1,4 +1,4 @@
-string label
+int32 label
 
 ---
 bool success
