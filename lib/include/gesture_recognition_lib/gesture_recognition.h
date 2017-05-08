@@ -5,6 +5,7 @@
 #include <ros/console.h>
 #include <aruco_msgs/MarkerArray.h>
 #include <gesture_recognition/RecordSample.h>
+#include <gesture_recognition/TrainPipeline.h>
 
 #include <GRT/GRT.h>
 
@@ -39,9 +40,20 @@ private:
 
     ros::ServiceServer service;
 
+    GRT::ClassificationDataStream trainingData;
 
 
 protected:
+
+    bool setUpTrainingData()
+    {
+        trainingData.setNumDimensions(3);
+        trainingData.setDatasetName("TrainingData");
+        trainingData.setInfoText("A training data set for the gesture recognition system.");
+
+        return true;
+    }
+
     /**
      * Callback function for the ARuco topic
      * @param msg the topic message
@@ -51,7 +63,10 @@ protected:
     bool recordCb(gesture_recognition::RecordSample::Request  &req,
                   gesture_recognition::RecordSample::Response &res);
 
-        /*
+    bool trainCb(gesture_recognition::TrainPipeline::Request &req,
+                 gesture_recognition::TrainPipeline::Response &res);
+
+    /*
      * Check availability of the ARuco data
      * @return true/false if feedback from ARuco is received
     */

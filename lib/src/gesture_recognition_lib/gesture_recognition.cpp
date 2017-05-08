@@ -11,14 +11,100 @@ GestureRec::GestureRec(string name, string limb, bool _no_robot) : _nh(name), _l
 
     std::string topic = "/gesture_recognition/record_sample";
     service = _nh.advertiseService(topic, &GestureRec::recordCb, this);
+
+    topic = "/gesture_recognition/train_pipeline";
+    ros::ServiceServer train_service = _nh.advertiseService(topic, &GestureRec::trainCb, this);
+
+    setUpTrainingData();
+
+    // string datasetName = trainingData.getDatasetName();
+    // string infoText = trainingData.getInfoText();
+    // GRT::UINT numSamples = trainingData.getNumSamples();
+    // GRT::UINT numDimensions = trainingData.getNumDimensions();
+    // GRT::UINT numClasses = trainingData.getNumClasses();
+
+    // cout << "Dataset Name: " << datasetName << endl;
+    // cout << "InfoText: " << infoText << endl;
+    // cout << "NumberOfSamples: " << numSamples << endl;
+    // cout << "NumberOfDimensions: " << numDimensions << endl;
+    // cout << "NumberOfClasses: " << numClasses << endl;
+
+    // //You can also get the minimum and maximum ranges of the data
+    // GRT::Vector< GRT::MinMax > ranges = trainingData.getRanges();
+
+    // cout << "The ranges of the dataset are: \n";
+    // for(GRT::UINT j=0; j<ranges.size(); j++){
+    //     cout << "Dimension: " << j << " Min: " << ranges[j].minValue << " Max: " << ranges[j].maxValue << endl;
+    // }
+
 }
+
+bool GestureRec::trainCb(gesture_recognition::TrainPipeline::Request &req,
+                         gesture_recognition::TrainPipeline::Response &res)
+{
+    std::string filename = req.filename;
+    GRT::ClassificationDataStream pipelineData;
+    if( !pipelineData.load(filename) ){
+        ROS_ERROR("ERROR: Failed to load training data from file\n");
+        return false;
+    }
+
+    GRT::GestureRecognitionPipeline pipeline;
+    pipeline.setClassifier( GRT::ANBC() );
+
+    if( !pipeline.train( pipelineData) )
+    {
+        ROS_ERROR("ERROR: Failed to train the pipeline!");
+        return false;
+    }
+
+    //Test the pipeline using the test data
+    if( !pipeline.test( pipelineData ) ){
+        ROS_ERROR("ERROR: Failed to test the pipeline!\n");
+        return false;
+    }
+
+     //Print some stats about the testing
+    cout << "Test Accuracy: " << pipeline.getTestAccuracy() << endl;
+
+    cout << "Precision: ";
+    for(GRT::UINT k=0; k<pipeline.getNumClassesInModel(); k++){
+        GRT::UINT classLabel = pipeline.getClassLabels()[k];
+        cout << "\t" << pipeline.getTestPrecision(classLabel);
+    }cout << endl;
+
+    cout << "Recall: ";
+    for(GRT::UINT k=0; k<pipeline.getNumClassesInModel(); k++){
+        GRT::UINT classLabel = pipeline.getClassLabels()[k];
+        cout << "\t" << pipeline.getTestRecall(classLabel);
+    }cout << endl;
+
+    cout << "FMeasure: ";
+    for(GRT::UINT k=0; k<pipeline.getNumClassesInModel(); k++){
+        GRT::UINT classLabel = pipeline.getClassLabels()[k];
+        cout << "\t" << pipeline.getTestFMeasure(classLabel);
+    }cout << endl;
+
+    GRT::MatrixDouble confusionMatrix = pipeline.getTestConfusionMatrix();
+    cout << "ConfusionMatrix: \n";
+    for(GRT::UINT i=0; i<confusionMatrix.getNumRows(); i++){
+        for(GRT::UINT j=0; j<confusionMatrix.getNumCols(); j++){
+            cout << confusionMatrix[i][j] << "\t";
+        }cout << endl;
+    }
+
+
+    res.success = true;
+    res.response = "trained and tested data";
+
+    return true;
+}
+
 
 bool GestureRec::recordCb(gesture_recognition::RecordSample::Request  &req,
                           gesture_recognition::RecordSample::Response &res)
 {
 
-    GRT::ClassificationDataStream trainingData;
-    trainingData.setNumDimensions(3);
     GRT::UINT gestureLabel = req.label;
 
     setMarkerID(19);
@@ -39,6 +125,14 @@ bool GestureRec::recordCb(gesture_recognition::RecordSample::Request  &req,
     trainingData = recordSample(trainingData, gestureLabel);
 
     trainingData.printStats();
+
+
+    if( !trainingData.save( "/home/baxter/ros_devel_ws/src/gesture_recognition/data/TrainingData.csv" ) ){
+        cout << "ERROR: Failed to save dataset to file!\n";
+        return false;
+    }
+
+
     res.response = "Recorded Sample";
     res.success = true;
     return true;
@@ -112,7 +206,6 @@ GRT::ClassificationDataStream GestureRec::recordSample(GRT::ClassificationDataSt
     trainingData.addSample(gestureLabel, gesture);
 
     ROS_INFO("training data should have 1 sample");
-    // trainingData.save("TrainingData.csv");
 
     return trainingData;
 }
