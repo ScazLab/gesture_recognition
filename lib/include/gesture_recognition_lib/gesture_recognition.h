@@ -6,6 +6,7 @@
 #include <aruco_msgs/MarkerArray.h>
 #include <gesture_recognition/RecordSample.h>
 #include <gesture_recognition/TrainPipeline.h>
+#include <gesture_recognition/DoAction.h>
 
 #include <GRT/GRT.h>
 
@@ -38,9 +39,12 @@ private:
     geometry_msgs::Point        curr_marker_pos;
     geometry_msgs::Quaternion   curr_marker_ori;
 
-    ros::ServiceServer service;
+    ros::ServiceServer record_service;
+    ros::ServiceServer train_service;
 
-    GRT::ClassificationDataStream trainingData;
+    GRT::TimeSeriesClassificationDataStream trainingData;
+
+    GRT::GestureRecognitionPipeline pipeline;
 
 
 protected:
@@ -54,17 +58,39 @@ protected:
         return true;
     }
 
+    bool setUpPipeline()
+    {
+        pipeline.setClassifier( GRT::ANBC() );
+        return true;
+    }
+
+     /**
+     * @brief records 1 second of ARuco data
+     * @return true/false if success/failure
+     */
+    GRT::TimeSeriesClassificationDataStream recordSample(GRT::TimeSeriesClassificationDataStream trainingData, GRT::UINT gestureLabel);
+
+    bool trainPipeline(GRT::GestureRecognitionPipeline pipeline, GRT::TimeSeriesClassificationDataStream pipelineData);
+
+    bool testPipeline(GRT::GestureRecognitionPipeline pipeline);
+
     /**
      * Callback function for the ARuco topic
      * @param msg the topic message
      */
     void ARucoCb(const aruco_msgs::MarkerArray& msg);
 
-    bool recordCb(gesture_recognition::RecordSample::Request  &req,
-                  gesture_recognition::RecordSample::Response &res);
+    bool actionCb(gesture_recognition::DoAction::Request &req,
+                  gesture_recognition::DoAction::Response &res);
 
-    bool trainCb(gesture_recognition::TrainPipeline::Request &req,
-                 gesture_recognition::TrainPipeline::Response &res);
+    bool recordCb(gesture_recognition::DoAction::Request  &req,
+                  gesture_recognition::DoAction::Response &res);
+
+    bool trainCb(gesture_recognition::DoAction::Request &req,
+                 gesture_recognition::DoAction::Response &res);
+
+    bool testCb(gesture_recognition::DoAction::Request &req,
+                gesture_recognition::DoAction::Response &res);
 
     /*
      * Check availability of the ARuco data
@@ -93,18 +119,6 @@ protected:
      * @return the subset of available markers among those available
      */
     std::vector<int> getAvailableMarkers(std::vector<int> _markers);
-
-    /**
-     * @brief records 1 second of ARuco data
-     * @return true/false if success/failure
-     */
-    GRT::ClassificationDataStream recordSample(GRT::ClassificationDataStream trainingData, GRT::UINT gestureLabel);
-
-    /**
-     * @brief record & save sample data
-     * @return true/false if success/failure
-     */
-    bool recTrainingData();
 
 
 

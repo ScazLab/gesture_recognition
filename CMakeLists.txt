@@ -61,6 +61,7 @@ add_service_files(
   FILES
   RecordSample.srv
   TrainPipeline.srv
+  DoAction.srv
 )
 
 ## Generate actions in the 'action' folder

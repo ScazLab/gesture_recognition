@@ -9,13 +9,14 @@ GestureRec::GestureRec(string name, string limb, bool _no_robot) : _nh(name), _l
     _aruco_sub = _nh.subscribe("/aruco_marker_publisher/markers",
                                3, &GestureRec::ARucoCb, this);
 
-    std::string topic = "/gesture_recognition/record_sample";
-    service = _nh.advertiseService(topic, &GestureRec::recordCb, this);
+    std::string topic = "/gesture_recognition/action_provider";
+    record_service = _nh.advertiseService(topic, &GestureRec::actionCb, this);
 
     topic = "/gesture_recognition/train_pipeline";
-    ros::ServiceServer train_service = _nh.advertiseService(topic, &GestureRec::trainCb, this);
+    train_service = _nh.advertiseService(topic, &GestureRec::trainCb, this);
 
     setUpTrainingData();
+    setUpPipeline();
 
     // string datasetName = trainingData.getDatasetName();
     // string infoText = trainingData.getInfoText();
@@ -39,59 +40,80 @@ GestureRec::GestureRec(string name, string limb, bool _no_robot) : _nh(name), _l
 
 }
 
-bool GestureRec::trainCb(gesture_recognition::TrainPipeline::Request &req,
-                         gesture_recognition::TrainPipeline::Response &res)
+bool GestureRec::actionCb(gesture_recognition::DoAction::Request &req,
+                          gesture_recognition::DoAction::Response &res)
+{
+    std::string action = req.action;
+
+    if (action == "record")
+    {
+        if (!recordCb(req, res)) return false;
+        return true;
+    }
+
+    if (action == "train")
+    {
+        if (!trainCb(req, res)) return false;
+        return true;
+    }
+
+    if (action == "test")
+    {
+        if(!testCb(req, res)) return false;
+        return true;
+    }
+
+    return true;
+}
+
+bool GestureRec::trainCb(gesture_recognition::DoAction::Request &req,
+                         gesture_recognition::DoAction::Response &res)
 {
     std::string filename = req.filename;
-    GRT::ClassificationDataStream pipelineData;
+    GRT::TimeSeriesClassificationDataStream pipelineData;
+
     if( !pipelineData.load(filename) ){
         ROS_ERROR("ERROR: Failed to load training data from file\n");
         return false;
     }
 
-    GRT::GestureRecognitionPipeline pipeline;
-    pipeline.setClassifier( GRT::ANBC() );
 
-    if( !pipeline.train( pipelineData) )
-    {
-        ROS_ERROR("ERROR: Failed to train the pipeline!");
-        return false;
-    }
+    // if ( !trainPipeline(pipeline, pipelineData)) return false;
 
-    //Test the pipeline using the test data
-    if( !pipeline.test( pipelineData ) ){
-        ROS_ERROR("ERROR: Failed to test the pipeline!\n");
-        return false;
-    }
+    // //Test the pipeline using the test data
+    // if( !pipeline.test( pipelineData ) ){
+    //     ROS_ERROR("ERROR: Failed to test the pipeline!\n");
+    //     return false;
+    // }
 
-     //Print some stats about the testing
-    cout << "Test Accuracy: " << pipeline.getTestAccuracy() << endl;
+    //  //Print some stats about the testing
+    // cout << "Test Accuracy: " << pipeline.getTestAccuracy() << endl;
 
-    cout << "Precision: ";
-    for(GRT::UINT k=0; k<pipeline.getNumClassesInModel(); k++){
-        GRT::UINT classLabel = pipeline.getClassLabels()[k];
-        cout << "\t" << pipeline.getTestPrecision(classLabel);
-    }cout << endl;
+    // cout << "Precision: ";
+    // for(GRT::UINT k=0; k<pipeline.getNumClassesInModel(); k++){
+    //     GRT::UINT classLabel = pipeline.getClassLabels()[k];
+    //     cout << "\t" << pipeline.getTestPrecision(classLabel);
+    // }cout << endl;
 
-    cout << "Recall: ";
-    for(GRT::UINT k=0; k<pipeline.getNumClassesInModel(); k++){
-        GRT::UINT classLabel = pipeline.getClassLabels()[k];
-        cout << "\t" << pipeline.getTestRecall(classLabel);
-    }cout << endl;
+    // cout << "Recall: ";
+    // for(GRT::UINT k=0; k<pipeline.getNumClassesInModel(); k++){
+    //     GRT::UINT classLabel = pipeline.getClassLabels()[k];
+    //     cout << "\t" << pipeline.getTestRecall(classLabel);
+    // }cout << endl;
 
-    cout << "FMeasure: ";
-    for(GRT::UINT k=0; k<pipeline.getNumClassesInModel(); k++){
-        GRT::UINT classLabel = pipeline.getClassLabels()[k];
-        cout << "\t" << pipeline.getTestFMeasure(classLabel);
-    }cout << endl;
+    // cout << "FMeasure: ";
+    // for(GRT::UINT k=0; k<pipeline.getNumClassesInModel(); k++){
+    //     GRT::UINT classLabel = pipeline.getClassLabels()[k];
+    //     cout << "\t" << pipeline.getTestFMeasure(classLabel);
+    // }cout << endl;
 
-    GRT::MatrixDouble confusionMatrix = pipeline.getTestConfusionMatrix();
-    cout << "ConfusionMatrix: \n";
-    for(GRT::UINT i=0; i<confusionMatrix.getNumRows(); i++){
-        for(GRT::UINT j=0; j<confusionMatrix.getNumCols(); j++){
-            cout << confusionMatrix[i][j] << "\t";
-        }cout << endl;
-    }
+    // GRT::MatrixDouble confusionMatrix = pipeline.getTestConfusionMatrix();
+    // cout << "ConfusionMatrix: \n";
+    // for(GRT::UINT i=0; i<confusionMatrix.getNumRows(); i++){
+    //     for(GRT::UINT j=0; j<confusionMatrix.getNumCols(); j++){
+    //         cout << confusionMatrix[i][j] << "\t";
+    //     }cout << endl;
+    // }
 
 
     res.success = true;
@@ -100,12 +122,22 @@ bool GestureRec::trainCb(gesture_recognition::TrainPipeline::Request &req,
     return true;
 }
 
+bool GestureRec::testCb(gesture_recognition::DoAction::Request &rec,
+                        gesture_recognition::DoAction::Response &res)
+{
+    // if (!testPipeline(pipeline)) return false;
 
-bool GestureRec::recordCb(gesture_recognition::RecordSample::Request  &req,
-                          gesture_recognition::RecordSample::Response &res)
+    res.success = true;
+    res.response = "Tested Pipeline";
+    return true;
+}
+
+
+bool GestureRec::recordCb(gesture_recognition::DoAction::Request  &req,
+                          gesture_recognition::DoAction::Response &res)
 {
 
-    GRT::UINT gestureLabel = req.label;
+    GRT::UINT gestureLabel = req.class_label;
 
     setMarkerID(19);
 
@@ -121,6 +153,7 @@ bool GestureRec::recordCb(gesture_recognition::RecordSample::Request  &req,
     ros::Duration(1.0).sleep();
     ROS_INFO("Recording in 1 second...");
     ros::Duration(1.0).sleep();
+    ROS_INFO("Recording!");
 
     trainingData = recordSample(trainingData, gestureLabel);
 
@@ -133,7 +166,7 @@ bool GestureRec::recordCb(gesture_recognition::RecordSample::Request  &req,
     }
 
 
-    res.response = "Recorded Sample";
+    res.response = "Recorded sample with class label " + std::to_string(req.class_label);
     res.success = true;
     return true;
 }
@@ -179,7 +212,7 @@ void GestureRec::ARucoCb(const aruco_msgs::MarkerArray& msg)
     }
 }
 
-GRT::ClassificationDataStream GestureRec::recordSample(GRT::ClassificationDataStream trainingData, GRT::UINT gestureLabel)
+GRT::TimeSeriesClassificationDataStream GestureRec::recordSample(GRT::TimeSeriesClassificationDataStream trainingData, GRT::UINT gestureLabel)
 {
 
     GRT::MatrixFloat gesture;
@@ -210,18 +243,111 @@ GRT::ClassificationDataStream GestureRec::recordSample(GRT::ClassificationDataSt
     return trainingData;
 }
 
-bool GestureRec::recTrainingData()
+bool trainPipeline(GRT::GestureRecognitionPipeline pipeline, GRT::TimeSeriesClassificationDataStream pipelineData)
 {
-    //Create a new instance of the ClassificationData
-    // GRT::ClassificationData trainingData;
-    // GRT::UINT gestureLabel = 1;
-
-    // if (!recordSample(trainingData, gestureLabel)) return false;
-
-    // bool saveResult = trainingData.save( "TrainingData.grt" );
+    if( !pipeline.train( pipelineData) )
+    {
+        ROS_ERROR("ERROR: Failed to train the pipeline!");
+        return false;
+    }
 
     return true;
+}
 
+bool testPipeline(GRT::GestureRecognitionPipeline pipeline)
+{
+    // Generate some data
+    GRT::TimeSeriesClassificationDataStream testData;
+    testData.setNumDimensions(3);
+    testData.setDatasetName("TestingData");
+
+    GRT::TimeSeriesClassificationDataStream testingSample;
+    testingSample.setNumDimensions(3);
+    testingSample.setDatasetName("SampleToTest");
+
+    GRT::UINT gestureLabel = 1;
+
+    GRT::Random random;
+    for(GRT::UINT k=0; k<3; k++){//For the number of classes
+        gestureLabel = k+1;
+
+        //Get the init random walk position for this gesture
+        GRT::VectorDouble startPos( testData.getNumDimensions() );
+        for(GRT::UINT j=0; j<startPos.size(); j++){
+            startPos[j] = random.getRandomNumberUniform(-1.0,1.0);
+        }
+
+        //Generate the 20 time series
+        for(GRT::UINT x=0; x<20; x++){
+            //Generate the random walk
+            GRT::UINT randomWalkLength = random.getRandomNumberInt(90, 110);
+            GRT::VectorDouble sample = startPos;
+            for(GRT::UINT i=0; i<randomWalkLength; i++){
+                for(GRT::UINT j=0; j<sample.size(); j++){
+                    sample[j] += random.getRandomNumberUniform(-0.1,0.1);
+                }
+
+                //Add the training sample to the dataset
+                testData.addSample(gestureLabel, sample );
+                testingSample.addSample(gestureLabel, sample);
+            }
+
+            //now add some noise to represent a null class
+            for(GRT::UINT i=0; i<50; i++){
+                for(GRT::UINT j=0; j<sample.size(); j++){
+                    sample[j] = random.getRandomNumberUniform(-0.01,0.01);
+                }
+
+                //Add the training sample to the dataset, note that we set the gesture label to 0
+                testData.addSample(0, sample );
+                testingSample.addSample(0, sample);
+            }
+        }
+    }
+
+
+    //Train the pipeline using the training data
+    if( !pipeline.train( testData ) ){
+        ROS_ERROR("Failed to train the pipeline!");
+        return false;
+    }
+
+    //Test the pipeline using the test data
+    if( !pipeline.test( testingSample ) ){
+        ROS_ERROR("Failed to test the pipeline!");
+        return false;
+    }
+
+    //Print some stats about the testing
+    cout << "Test Accuracy: " << pipeline.getTestAccuracy() << endl;
+
+    cout << "Precision: ";
+    for(GRT::UINT k=0; k<pipeline.getNumClassesInModel(); k++){
+        GRT::UINT classLabel = pipeline.getClassLabels()[k];
+        cout << "\t" << pipeline.getTestPrecision(classLabel);
+    }cout << endl;
+
+    cout << "Recall: ";
+    for(GRT::UINT k=0; k<pipeline.getNumClassesInModel(); k++){
+        GRT::UINT classLabel = pipeline.getClassLabels()[k];
+        cout << "\t" << pipeline.getTestRecall(classLabel);
+    }cout << endl;
+
+    cout << "FMeasure: ";
+    for(GRT::UINT k=0; k<pipeline.getNumClassesInModel(); k++){
+        GRT::UINT classLabel = pipeline.getClassLabels()[k];
+        cout << "\t" << pipeline.getTestFMeasure(classLabel);
+    }cout << endl;
+
+    GRT::MatrixDouble confusionMatrix = pipeline.getTestConfusionMatrix();
+    cout << "ConfusionMatrix: \n";
+    for(GRT::UINT i=0; i<confusionMatrix.getNumRows(); i++){
+        for(GRT::UINT j=0; j<confusionMatrix.getNumCols(); j++){
+            cout << confusionMatrix[i][j] << "\t";
+        }cout << endl;
+    }
+
+    return true;
 }
 
 GestureRec::~GestureRec()

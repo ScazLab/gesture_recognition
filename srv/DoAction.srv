@@ -1,0 +1,8 @@
+string action
+string filename
+int32 class_label
+
+---
+
+bool success
+string response
