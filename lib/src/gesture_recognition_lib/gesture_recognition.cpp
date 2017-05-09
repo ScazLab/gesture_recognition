@@ -9,22 +9,63 @@ GestureRec::GestureRec(string name, string limb, bool _no_robot) : _nh(name), _l
     _aruco_sub = _nh.subscribe("/aruco_marker_publisher/markers",
                                3, &GestureRec::ARucoCb, this);
 
-    std::string topic = "/gesture_recognition/action_provider";
-    service = _nh.advertiseService(topic, &GestureRec::actionCb, this);
+    std::string action_topic = "/gesture_recognition/action_provider";
+    service = _nh.advertiseService(action_topic, &GestureRec::actionCb, this);
 
     setUpTrainingData();
     setUpPipeline();
 
-    topic = "/gesture_recognition/result";
-    gesture_pub = _nh.advertise<gesture_recognition::GestureState>(topic, 3);
-    gesture_sub = _nh.subscribe(topic, 3, &GestureRec::gestureCb, this);
+    std::string result_topic = "/gesture_recognition/result";
+    gesture_pub = _nh.advertise<gesture_recognition::GestureState>(result_topic, 1000);
+    gesture_sub = _nh.subscribe(result_topic, 1000, &GestureRec::gestureCb, this);
 
+    // publishGestures();
 
 }
 
 void GestureRec::gestureCb(const gesture_recognition::GestureState& msg)
 {
-    //TODO: continuously check for gestures and publish the result
+    gesture_found = msg.gesture_found;
+    gesture_id = msg.predicted_class;
+}
+
+void GestureRec::publishGestures()
+{
+    gesture_recognition::GestureState msg;
+    msg.gesture_found = false;
+    msg.predicted_class = 0;
+
+    GRT::MatrixFloat gesture;
+    GRT::Vector< GRT:: VectorFloat > gestureVec;
+    GRT::VectorFloat sample(3);
+
+    if(!pipeline.getTrained())
+        {
+            ROS_INFO("Pipeline hasn't been trained yet so no gestures will be recognized");
+        }
+
+    while (ros::ok())
+    {
+
+
+        sample[0] = curr_marker_pos.x;
+        sample[1] = curr_marker_pos.y;
+        sample[2] = curr_marker_pos.z;
+        gestureVec.push_back(sample);
+
+        gesture = gestureVec;
+
+        if(pipeline.getTrained())
+        {
+            if(pipeline.predict(gesture)){
+                GRT::UINT predicted_label = pipeline.getPredictedClassLabel();
+                msg.gesture_found = true;
+                msg.predicted_class = predicted_label;
+            }
+        }
+
+        gesture_pub.publish(msg);
+    }
 }
 
 bool GestureRec::actionCb(gesture_recognition::DoAction::Request &req,
@@ -40,7 +81,7 @@ bool GestureRec::actionCb(gesture_recognition::DoAction::Request &req,
 
     if (action == "record")
     {
-        if (!recordSample(trainingData, class_label, marker_id)) return false;
+        if (!recordSample(trainingData, class_label, marker_id, filename)) return false;
         res.success = true;
         return true;
     }
@@ -49,10 +90,14 @@ bool GestureRec::actionCb(gesture_recognition::DoAction::Request &req,
     {
         GRT::TimeSeriesClassificationDataStream pipelineData;
 
-        if( !pipelineData.load(filename) ){
+        if( filename.empty() ) {
+            pipelineData = trainingData;
+        }
+        else if( !pipelineData.load(filename) ){
             ROS_ERROR("ERROR: Failed to load training data from file\n");
             return false;
         }
+
         if (!trainPipeline(pipeline, pipelineData)) return false;
         res.success = true;
         return true;
@@ -61,6 +106,14 @@ bool GestureRec::actionCb(gesture_recognition::DoAction::Request &req,
     if (action == "test")
     {
         if(!testPipeline(pipeline)) return false;
+        res.success = true;
+        return true;
+    }
+
+
+    if (action == "predict")
+    {
+        if(!predictOnce(pipeline, marker_id)) return false;
         res.success = true;
         return true;
     }
@@ -109,7 +162,7 @@ void GestureRec::ARucoCb(const aruco_msgs::MarkerArray& msg)
     }
 }
 
-bool GestureRec::recordSample(GRT::TimeSeriesClassificationDataStream &trainingData, GRT::UINT gestureLabel, int marker_id)
+bool GestureRec::recordSample(GRT::TimeSeriesClassificationDataStream &trainingData, GRT::UINT gestureLabel, int marker_id, std::string filename)
 {
     setMarkerID(marker_id);
 
@@ -151,14 +204,19 @@ bool GestureRec::recordSample(GRT::TimeSeriesClassificationDataStream &trainingD
 
     trainingData.printStats();
 
-
-    if( !trainingData.save( "/home/baxter/ros_devel_ws/src/gesture_recognition/data/TrainingData.csv" ) ){
-        cout << "ERROR: Failed to save dataset to file!\n";
-        return false;
-    }
+    if (!filename.empty())
+    {
+        if( !trainingData.save( filename ) )
+        {
+            ROS_ERROR("Failed to save dataset to file!");
+            return false;
+        }
 
     ROS_INFO("Sample recorded; dataset saved to file.");
 
+    }
+
+    ROS_INFO("Sample recorded; no save file specified");
     return true;
 }
 
@@ -172,6 +230,60 @@ bool GestureRec::trainPipeline(GRT::GestureRecognitionPipeline &pipeline, GRT::T
     }
 
     return true;
+}
+
+bool GestureRec::predictOnce(GRT::GestureRecognitionPipeline &pipeline, int marker_id)
+{
+    setMarkerID(marker_id);
+
+    ROS_INFO("Ready to record a gesture!");
+    ROS_INFO("Recording in 5 seconds...");
+    ros::Duration(1.0).sleep();
+    ROS_INFO("Recording in 4 seconds...");
+    ros::Duration(1.0).sleep();
+    ROS_INFO("Recording in 3 seconds...");
+    ros::Duration(1.0).sleep();
+    ROS_INFO("Recording in 2 seconds...");
+    ros::Duration(1.0).sleep();
+    ROS_INFO("Recording in 1 second...");
+    ros::Duration(1.0).sleep();
+    ROS_INFO("Recording!");
+
+    GRT::MatrixFloat gesture;
+    GRT::Vector< GRT:: VectorFloat > gestureVec;
+    ros::Time time_start = ros::Time::now();
+
+    while( ros::Time::now().toSec() - time_start.toSec() < 1)
+    {
+        GRT::VectorFloat sample(3);
+        sample[0] = curr_marker_pos.x;
+        sample[1] = curr_marker_pos.y;
+        sample[2] = curr_marker_pos.z;
+
+        // sample[3] = curr_marker_ori.x;
+        // sample[4] = curr_marker_ori.y;
+        // sample[5] = curr_marker_ori.z;
+        // sample[6] = curr_marker_ori.w;
+
+        gestureVec.push_back(sample);
+    }
+
+    gesture = gestureVec;
+    if(pipeline.getTrained())
+        {
+            if(!pipeline.predict(gesture))
+            {
+                ROS_INFO("Unable to predict using the pipeline. Check that it has been trained with appropriate samples.");
+                return false;
+            };
+
+            GRT::UINT predicted_label = pipeline.getPredictedClassLabel();
+            cout << "Predicted label: " << predicted_label << endl;
+            return true;
+
+        }
+
+    return false;
 }
 
 bool GestureRec::testPipeline(GRT::GestureRecognitionPipeline &pipeline)

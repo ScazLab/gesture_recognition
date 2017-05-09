@@ -54,6 +54,12 @@ private:
     // pipeline to be used for gesture recognition
     GRT::GestureRecognitionPipeline pipeline;
 
+    // Bool to check if a gesture has been detected
+    bool gesture_found;
+
+    // Predicted Class ID of the gesture found
+    int gesture_id;
+
 
 protected:
 
@@ -90,7 +96,7 @@ protected:
      * @brief records 1 second of ARuco data and adds it to trainingData with the appropriate label
      * @return true/false if success/failure
      */
-    bool recordSample(GRT::TimeSeriesClassificationDataStream &trainingData, GRT::UINT gestureLabel, int marker_id);
+    bool recordSample(GRT::TimeSeriesClassificationDataStream &trainingData, GRT::UINT gestureLabel, int marker_id, std::string filename);
 
 
     /**
@@ -101,10 +107,7 @@ protected:
 
     /**
      * @brief generates dummy data, trains the pipeline, and tests the pipeline
-     * @details [long description]
-     *
-     * @param pipeline [description]
-     * @return [description]
+     * @return true/false if success/failure
      */
     bool testPipeline(GRT::GestureRecognitionPipeline &pipeline);
 
@@ -114,10 +117,28 @@ protected:
      */
     void ARucoCb(const aruco_msgs::MarkerArray& msg);
 
+    /**
+     * @brief Callback function for gesture recognition actions
+     * @return true/false if success/failure
+     */
     bool actionCb(gesture_recognition::DoAction::Request &req,
                   gesture_recognition::DoAction::Response &res);
 
+    /**
+     * @brief Callback function for the gesture recognition topic
+     */
     void gestureCb(const gesture_recognition::GestureState &msg);
+
+    /**
+     * @brief publishes status of gesture recognition in real time
+     */
+    void publishGestures();
+
+    /**
+     * @brief will record 1s of ARuco data and use the pipeline to predict the class of the gesture
+     * @return true/false if success/failure
+     */
+    bool predictOnce(GRT::GestureRecognitionPipeline &pipeline, int marker_id);
 
     /*
      * Check availability of the ARuco data
