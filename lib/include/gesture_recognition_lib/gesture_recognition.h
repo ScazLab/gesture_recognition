@@ -4,9 +4,8 @@
 #include <ros/ros.h>
 #include <ros/console.h>
 #include <aruco_msgs/MarkerArray.h>
-#include <gesture_recognition/RecordSample.h>
-#include <gesture_recognition/TrainPipeline.h>
 #include <gesture_recognition/DoAction.h>
+#include <gesture_recognition/GestureState.h>
 
 #include <GRT/GRT.h>
 
@@ -16,7 +15,7 @@ private:
 
     ros::NodeHandle _nh;
 
-    std::string _limb; // Limb of the gripper: left or right
+    std::string _limb; // Limb to use for ARuco detection
 
     // Subscriber to the ARuco detector,
     ros::Subscriber _aruco_sub;
@@ -24,7 +23,7 @@ private:
     // List of available markers
     std::vector<int> available_markers;
 
-        // Bool to check if ARuco is fine or not
+    // Bool to check if ARuco is fine or not
     bool              aruco_ok;
 
     // Bool to check if there are any markers detected
@@ -35,20 +34,34 @@ private:
 
     // ID of the marker to detect
     int              marker_id;
+
     // Marker position and orientation
     geometry_msgs::Point        curr_marker_pos;
     geometry_msgs::Quaternion   curr_marker_ori;
 
-    ros::ServiceServer record_service;
-    ros::ServiceServer train_service;
+    // service for gesture recognition actions
+    ros::ServiceServer service;
 
+    // publisher for gestures recognized in real time
+    ros::Publisher gesture_pub;
+
+    // subscriber for gestures recognized in real time
+    ros::Subscriber gesture_sub;
+
+    // training data to be used. add samples using recordSample
     GRT::TimeSeriesClassificationDataStream trainingData;
 
+    // pipeline to be used for gesture recognition
     GRT::GestureRecognitionPipeline pipeline;
 
 
 protected:
 
+
+    /**
+     * @brief initialize training data dimensions, name, and info
+     * @return true/false if success/failure
+     */
     bool setUpTrainingData()
     {
         trainingData.setNumDimensions(3);
@@ -58,21 +71,42 @@ protected:
         return true;
     }
 
+    /**
+     * @brief initialize pipeline features, such as classifier and preprocessing modules
+     * @return true/false if success/failure
+     */
     bool setUpPipeline()
     {
-        pipeline.setClassifier( GRT::ANBC() );
+        // combining MovementTrajectoryFeatures and ANBC is probably the way to go in the long run
+        // pipeline.addFeatureExtractionModule( GRT::MovementTrajectoryFeatures(100, 10, 1, 10, 3, false, true) );
+        // pipeline.setClassifier( GRT::ANBC() );
+
+        // generally successful classifiers: AdaBoost, GMM for now
+        pipeline.setClassifier( GRT::AdaBoost() );
         return true;
     }
 
      /**
-     * @brief records 1 second of ARuco data
+     * @brief records 1 second of ARuco data and adds it to trainingData with the appropriate label
      * @return true/false if success/failure
      */
-    GRT::TimeSeriesClassificationDataStream recordSample(GRT::TimeSeriesClassificationDataStream trainingData, GRT::UINT gestureLabel);
+    bool recordSample(GRT::TimeSeriesClassificationDataStream &trainingData, GRT::UINT gestureLabel, int marker_id);
 
-    bool trainPipeline(GRT::GestureRecognitionPipeline pipeline, GRT::TimeSeriesClassificationDataStream pipelineData);
 
-    bool testPipeline(GRT::GestureRecognitionPipeline pipeline);
+    /**
+     * @brief trains the pipeline with the pipelineData given
+     * @return true/false if success/failure
+     */
+    bool trainPipeline(GRT::GestureRecognitionPipeline &pipeline, GRT::TimeSeriesClassificationDataStream pipelineData);
+
+    /**
+     * @brief generates dummy data, trains the pipeline, and tests the pipeline
+     * @details [long description]
+     *
+     * @param pipeline [description]
+     * @return [description]
+     */
+    bool testPipeline(GRT::GestureRecognitionPipeline &pipeline);
 
     /**
      * Callback function for the ARuco topic
@@ -83,14 +117,7 @@ protected:
     bool actionCb(gesture_recognition::DoAction::Request &req,
                   gesture_recognition::DoAction::Response &res);
 
-    bool recordCb(gesture_recognition::DoAction::Request  &req,
-                  gesture_recognition::DoAction::Response &res);
-
-    bool trainCb(gesture_recognition::DoAction::Request &req,
-                 gesture_recognition::DoAction::Response &res);
-
-    bool testCb(gesture_recognition::DoAction::Request &req,
-                gesture_recognition::DoAction::Response &res);
+    void gestureCb(const gesture_recognition::GestureState &msg);
 
     /*
      * Check availability of the ARuco data

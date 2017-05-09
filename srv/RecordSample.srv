@@ -1,5 +1,0 @@
-int32 label
-
----
-bool success
-string response
