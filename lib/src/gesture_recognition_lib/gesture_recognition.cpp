@@ -2,7 +2,7 @@
 
 using namespace std;
 
-GestureRec::GestureRec(string name, string limb, bool _no_robot) : _nh(name), _limb(limb),
+GestureRec::GestureRec(string name, string limb) : _nh(name), _limb(limb),
                                       aruco_ok(false), markers_found(false),
                                          marker_found(false), marker_id(-1)
 {

@@ -171,7 +171,7 @@ protected:
 
 
 public:
-    GestureRec(std::string name, std::string limb, bool _no_robot);
+    GestureRec(std::string name, std::string limb);
     ~GestureRec();
 
 };
