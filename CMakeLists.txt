@@ -14,6 +14,7 @@ find_package(catkin REQUIRED COMPONENTS
              aruco_ros
              rosconsole
              message_generation
+             human_robot_collaboration
              )
 
 ## System dependencies are found with CMake's conventions
@@ -53,6 +54,7 @@ find_package(catkin REQUIRED COMPONENTS
 add_message_files(
   FILES
   GestureState.msg
+  RecState.msg
 )
 
 # Generate services in the 'srv' folder

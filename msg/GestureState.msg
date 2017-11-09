@@ -1,2 +1,3 @@
-bool gesture_found
-int32 predicted_class
+string state
+string action
+string object

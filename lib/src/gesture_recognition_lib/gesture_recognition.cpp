@@ -2,28 +2,31 @@
 
 using namespace std;
 
-GestureRec::GestureRec(string name, string limb) : _nh(name), _limb(limb),
-                                      aruco_ok(false), markers_found(false),
-                                         marker_found(false), marker_id(-1)
+GestureRec::GestureRec(string name, string limb) : PerceptionClientImpl(name, limb),
+                                        nh(name), spinner(4), limb(limb)
 {
-    _aruco_sub = _nh.subscribe("/aruco_marker_publisher/markers",
-                               3, &GestureRec::ARucoCb, this);
 
     std::string action_topic = "/gesture_recognition/action_provider";
-    service = _nh.advertiseService(action_topic, &GestureRec::actionCb, this);
+    service = nh.advertiseService(action_topic, &GestureRec::actionCb, this);
 
     setUpTrainingData();
     setUpPipeline();
 
     std::string result_topic = "/gesture_recognition/result";
-    gesture_pub = _nh.advertise<gesture_recognition::GestureState>(result_topic, 1000);
-    gesture_sub = _nh.subscribe(result_topic, 1000, &GestureRec::gestureCb, this);
+    gesture_pub = nh.advertise<gesture_recognition::RecState>(result_topic, 1000);
+    gesture_sub = nh.subscribe(result_topic, 1000, &GestureRec::gestureRecCb, this);
 
+    std::string state_topic = "/gesture_recognition/state";
+    state_pub = nh.advertise<gesture_recognition::GestureState>(state_topic, 1000);
+
+    // just for now, expect marker 198
+    object_id = 201;
     // publishGestures();
 
+    spinner.start();
 }
 
-void GestureRec::gestureCb(const gesture_recognition::GestureState& msg)
+void GestureRec::gestureRecCb(const gesture_recognition::RecState& msg)
 {
     gesture_found = msg.gesture_found;
     gesture_id = msg.predicted_class;
@@ -31,7 +34,7 @@ void GestureRec::gestureCb(const gesture_recognition::GestureState& msg)
 
 void GestureRec::publishGestures()
 {
-    gesture_recognition::GestureState msg;
+    gesture_recognition::RecState msg;
     msg.gesture_found = false;
     msg.predicted_class = 0;
 
@@ -48,9 +51,9 @@ void GestureRec::publishGestures()
     {
 
 
-        sample[0] = curr_marker_pos.x;
-        sample[1] = curr_marker_pos.y;
-        sample[2] = curr_marker_pos.z;
+        sample[0] = curr_object_pos.x;
+        sample[1] = curr_object_pos.y;
+        sample[2] = curr_object_pos.z;
         gestureVec.push_back(sample);
 
         gesture = gestureVec;
@@ -68,27 +71,45 @@ void GestureRec::publishGestures()
     }
 }
 
-bool GestureRec::actionCb(gesture_recognition::DoAction::Request &req,
-                          gesture_recognition::DoAction::Response &res)
+bool GestureRec::setUpPipeline()
 {
-    std::string action = req.action;
-    std::string filename = req.filename;
-    GRT::UINT class_label = req.class_label;
-    int marker_id = req.marker_id;
+    pipeline.setClassifier( GRT::DTW() );
+    // pipeline.setClassifier( GRT::HMM() );
+    return true;
+}
 
+bool GestureRec::setState(int _state)
+{
+    state.set(_state);
 
-    res.success = false;
+    return publishState();
+}
 
+bool GestureRec::publishState()
+{
+    gesture_recognition::GestureState msg;
+
+    msg.state = string(getState());
+    msg.action = getAction();
+    msg.object = object_id;
+
+    state_pub.publish(msg);
+
+    return true;
+}
+
+bool GestureRec::doAction(std::string action, std::string filename)
+{
+    setState(START);
     if (action == "record")
     {
-        if (!recordSample(trainingData, class_label, marker_id, filename)) return false;
-        res.success = true;
+        if (!recordSample(trainingData, class_label, object_id, filename)) return false;
+        setState(DONE);
         return true;
     }
-
-    if (action == "train")
+    else if (action == "train")
     {
-        GRT::TimeSeriesClassificationDataStream pipelineData;
+        GRT::TimeSeriesClassificationData pipelineData;
 
         if( filename.empty() ) {
             pipelineData = trainingData;
@@ -99,72 +120,59 @@ bool GestureRec::actionCb(gesture_recognition::DoAction::Request &req,
         }
 
         if (!trainPipeline(pipeline, pipelineData)) return false;
-        res.success = true;
+        setState(DONE);
         return true;
     }
-
-    if (action == "test")
+    else if (action == "test")
     {
         if(!testPipeline(pipeline)) return false;
-        res.success = true;
+        setState(DONE);
         return true;
     }
-
-
-    if (action == "predict")
+    else if (action == "predict")
     {
-        if(!predictOnce(pipeline, marker_id)) return false;
-        res.success = true;
+        if(!predictOnce(pipeline, object_id)) return false;
+        setState(DONE);
         return true;
     }
-
+    setState(ERROR);
+    ROS_INFO("Action %s is not allowed.", action.c_str());
     return false;
 }
 
-void GestureRec::ARucoCb(const aruco_msgs::MarkerArray& msg)
+bool GestureRec::setAction(const string& _action)
 {
-    if (msg.markers.size() > 0)
-    {
-        available_markers.clear();
-    }
-
-    for (size_t i = 0; i < msg.markers.size(); ++i)
-    {
-        // ROS_DEBUG("Processing marker with id %i",msg.markers[i].id);
-
-        available_markers.push_back(int(msg.markers[i].id));
-        markers_found = true;
-
-        if (int(msg.markers[i].id) == getMarkerID())
-        {
-            curr_marker_pos = msg.markers[i].pose.pose.position;
-            curr_marker_ori = msg.markers[i].pose.pose.orientation;
-
-
-            ROS_DEBUG("Marker is in: %g %g %g", curr_marker_pos.x,
-                                                curr_marker_pos.y,
-                                                curr_marker_pos.z);
-            // ROS_INFO("Marker is in: %g %g %g %g", curr_marker_ori.x,
-            //                                       curr_marker_ori.y,
-            //                                       curr_marker_ori.z,
-            //                                       curr_marker_ori.w);
-
-            if (!marker_found)
-            {
-                marker_found = true;
-            }
-        }
-    }
-
-    if (!aruco_ok)
-    {
-        aruco_ok = true;
-    }
+    action = _action;
+    publishState();
+    return true;
 }
 
-bool GestureRec::recordSample(GRT::TimeSeriesClassificationDataStream &trainingData, GRT::UINT gestureLabel, int marker_id, std::string filename)
+
+bool GestureRec::actionCb(gesture_recognition::DoAction::Request &req,
+                          gesture_recognition::DoAction::Response &res)
 {
-    setMarkerID(marker_id);
+    std::string action = req.action;
+    setAction(action);
+    std::string filename = req.filename;
+    class_label = req.class_label;
+    int object_id = req.object_id;
+    setObjectID(object_id);
+
+    ROS_INFO("%s was requested with filename %s, class label %d, and object ID %d", action.c_str(), filename.c_str(), class_label, object_id);
+
+    if (!doAction(action, filename))
+    {
+        res.success = false;
+        return false;
+    }
+
+    res.success = true;
+    return true;
+}
+
+bool GestureRec::recordSample(GRT::TimeSeriesClassificationData &trainingData, GRT::UINT gestureLabel, int object_id, std::string filename)
+{
+    setObjectID(object_id);
 
     ROS_INFO("Ready to record a gesture!");
     ROS_INFO("Recording in 5 seconds...");
@@ -180,27 +188,27 @@ bool GestureRec::recordSample(GRT::TimeSeriesClassificationDataStream &trainingD
     ROS_INFO("Recording!");
 
     GRT::MatrixFloat gesture;
-    GRT::Vector< GRT:: VectorFloat > gestureVec;
-    ros::Time time_start = ros::Time::now();
+    GRT::VectorFloat currPos(trainingData.getNumDimensions());
 
-    while( ros::Time::now().toSec() - time_start.toSec() < 1)
+    GRT::UINT gestureLength = 0;
+
+    // record a gesture sample for 1 second
+    ros::Rate r(60);
+    while(ros::ok() && waitForData() && gestureLength < 30)
     {
-        GRT::VectorFloat sample(3);
-        sample[0] = curr_marker_pos.x;
-        sample[1] = curr_marker_pos.y;
-        sample[2] = curr_marker_pos.z;
+        currPos[0] = curr_object_pos.x;
+        currPos[1] = curr_object_pos.y;
+        currPos[2] = curr_object_pos.z;
 
-        // sample[3] = curr_marker_ori.x;
-        // sample[4] = curr_marker_ori.y;
-        // sample[5] = curr_marker_ori.z;
-        // sample[6] = curr_marker_ori.w;
-
-        gestureVec.push_back(sample);
+        ROS_INFO("object is in: %g %g %g", curr_object_pos.x,
+                                                curr_object_pos.y,
+                                                curr_object_pos.z);
+        gesture.push_back(currPos);
+        gestureLength++;
+        r.sleep();
     }
 
-    gesture = gestureVec;
-
-    trainingData.addSample(gestureLabel, gesture);
+    trainingData.addSample( gestureLabel, gesture);
 
     trainingData.printStats();
 
@@ -212,15 +220,15 @@ bool GestureRec::recordSample(GRT::TimeSeriesClassificationDataStream &trainingD
             return false;
         }
 
-    ROS_INFO("Sample recorded; dataset saved to file.");
-
+        ROS_INFO("Sample recorded; dataset saved to file.");
+        return true;
     }
 
     ROS_INFO("Sample recorded; no save file specified");
     return true;
 }
 
-bool GestureRec::trainPipeline(GRT::GestureRecognitionPipeline &pipeline, GRT::TimeSeriesClassificationDataStream pipelineData)
+bool GestureRec::trainPipeline(GRT::GestureRecognitionPipeline &pipeline, GRT::TimeSeriesClassificationData pipelineData)
 {
 
     if( !pipeline.train( pipelineData) )
@@ -232,9 +240,9 @@ bool GestureRec::trainPipeline(GRT::GestureRecognitionPipeline &pipeline, GRT::T
     return true;
 }
 
-bool GestureRec::predictOnce(GRT::GestureRecognitionPipeline &pipeline, int marker_id)
+bool GestureRec::predictOnce(GRT::GestureRecognitionPipeline &pipeline, int object_id)
 {
-    setMarkerID(marker_id);
+    setObjectID(object_id);
 
     ROS_INFO("Ready to record a gesture!");
     ROS_INFO("Recording in 5 seconds...");
@@ -250,32 +258,33 @@ bool GestureRec::predictOnce(GRT::GestureRecognitionPipeline &pipeline, int mark
     ROS_INFO("Recording!");
 
     GRT::MatrixFloat gesture;
-    GRT::Vector< GRT:: VectorFloat > gestureVec;
-    ros::Time time_start = ros::Time::now();
+    GRT::VectorFloat currPos(trainingData.getNumDimensions());
 
-    while( ros::Time::now().toSec() - time_start.toSec() < 1)
+    GRT::UINT gestureLength = 0;
+
+    // record a gesture sample for 1 second
+    ros::Rate r(60);
+    while(ros::ok() && waitForData() && gestureLength < 30)
     {
-        GRT::VectorFloat sample(3);
-        sample[0] = curr_marker_pos.x;
-        sample[1] = curr_marker_pos.y;
-        sample[2] = curr_marker_pos.z;
+        currPos[0] = curr_object_pos.x;
+        currPos[1] = curr_object_pos.y;
+        currPos[2] = curr_object_pos.z;
 
-        // sample[3] = curr_marker_ori.x;
-        // sample[4] = curr_marker_ori.y;
-        // sample[5] = curr_marker_ori.z;
-        // sample[6] = curr_marker_ori.w;
-
-        gestureVec.push_back(sample);
+        ROS_INFO("object is in: %g %g %g", curr_object_pos.x,
+                                                curr_object_pos.y,
+                                                curr_object_pos.z);
+        gesture.push_back(currPos);
+        gestureLength++;
+        r.sleep();
     }
 
-    gesture = gestureVec;
     if(pipeline.getTrained())
         {
             if(!pipeline.predict(gesture))
             {
                 ROS_INFO("Unable to predict using the pipeline. Check that it has been trained with appropriate samples.");
                 return false;
-            };
+            }
 
             GRT::UINT predicted_label = pipeline.getPredictedClassLabel();
             cout << "Predicted label: " << predicted_label << endl;
@@ -289,11 +298,11 @@ bool GestureRec::predictOnce(GRT::GestureRecognitionPipeline &pipeline, int mark
 bool GestureRec::testPipeline(GRT::GestureRecognitionPipeline &pipeline)
 {
     // Generate some data
-    GRT::TimeSeriesClassificationDataStream testData;
+    GRT::TimeSeriesClassificationData testData;
     testData.setNumDimensions(3);
     testData.setDatasetName("TestingData");
 
-    GRT::TimeSeriesClassificationDataStream testingSample;
+    GRT::TimeSeriesClassificationData testingSample;
     testingSample.setNumDimensions(3);
     testingSample.setDatasetName("SampleToTest");
 
@@ -303,47 +312,43 @@ bool GestureRec::testPipeline(GRT::GestureRecognitionPipeline &pipeline)
 
     GRT::UINT gestureLabel = 1;
 
+    GRT::MatrixFloat trainingSample;
+
+    //For now we will just add 10 x 20 random walk data timeseries
     GRT::Random random;
-    for(GRT::UINT k=0; k<3; k++){//For the number of classes
+    for(GRT::UINT k=0; k<10; k++){//For the number of classes
         gestureLabel = k+1;
 
         //Get the init random walk position for this gesture
-        GRT::VectorDouble startPos( testData.getNumDimensions() );
+        GRT::VectorFloat startPos( trainingData.getNumDimensions() );
         for(GRT::UINT j=0; j<startPos.size(); j++){
             startPos[j] = random.getRandomNumberUniform(-1.0,1.0);
         }
 
         //Generate the 20 time series
         for(GRT::UINT x=0; x<20; x++){
+
+            //Clear any previous timeseries
+            trainingSample.clear();
+
             //Generate the random walk
             GRT::UINT randomWalkLength = random.getRandomNumberInt(90, 110);
-            GRT::VectorDouble train_sample = startPos;
-            GRT::VectorDouble test_sample = startPos;
-
+            GRT::VectorFloat sample = startPos;
             for(GRT::UINT i=0; i<randomWalkLength; i++){
-                for(GRT::UINT j=0; j<train_sample.size(); j++){
-                    train_sample[j] += random.getRandomNumberUniform(-0.1,0.1);
-                    test_sample[j] += random.getRandomNumberUniform(-0.1,0.1);
+                for(GRT::UINT j=0; j<startPos.size(); j++){
+                    sample[j] += random.getRandomNumberUniform(-0.1,0.1);
                 }
 
-                //Add the training sample to the dataset
-                testData.addSample(gestureLabel, train_sample );
-                testingSample.addSample(gestureLabel, test_sample);
+                //Add the sample to the training sample
+                trainingSample.push_back( sample );
             }
 
-            //now add some noise to represent a null class
-            for(GRT::UINT i=0; i<50; i++){
-                for(GRT::UINT j=0; j<train_sample.size(); j++){
-                    train_sample[j] = random.getRandomNumberUniform(-0.01,0.01);
-                    test_sample[j] = random.getRandomNumberUniform(-0.1,0.1);
-                }
+            //Add the training sample to the dataset
+            trainingData.addSample( gestureLabel, trainingSample );
 
-                //Add the training sample to the dataset, note that we set the gesture label to 0
-                testData.addSample(0, train_sample );
-                testingSample.addSample(0, test_sample);
-            }
         }
     }
+
 
     // testData.printStats();
     // testingSample.printStats();
@@ -394,5 +399,5 @@ bool GestureRec::testPipeline(GRT::GestureRecognitionPipeline &pipeline)
 
 GestureRec::~GestureRec()
 {
-
+    if (gesture_thread.joinable()) { gesture_thread.join(); }
 }
