@@ -131,7 +131,7 @@ bool GestureRec::doAction(std::string action, std::string filename)
     }
     else if (action == "predict")
     {
-        if(!predictOnce(pipeline, object_id)) return false;
+        if(!predictOnce(pipeline, class_label, object_id)) return false;
         setState(DONE);
         return true;
     }
@@ -155,6 +155,7 @@ bool GestureRec::actionCb(gesture_recognition::DoAction::Request &req,
     setAction(action);
     std::string filename = req.filename;
     class_label = req.class_label;
+
     int object_id = req.object_id;
     setObjectID(object_id);
 
@@ -240,7 +241,7 @@ bool GestureRec::trainPipeline(GRT::GestureRecognitionPipeline &pipeline, GRT::T
     return true;
 }
 
-bool GestureRec::predictOnce(GRT::GestureRecognitionPipeline &pipeline, int object_id)
+bool GestureRec::predictOnce(GRT::GestureRecognitionPipeline &pipeline, GRT::UINT gestureLabel, int object_id)
 {
     setObjectID(object_id);
 
@@ -287,7 +288,15 @@ bool GestureRec::predictOnce(GRT::GestureRecognitionPipeline &pipeline, int obje
             }
 
             GRT::UINT predicted_label = pipeline.getPredictedClassLabel();
-            cout << "Predicted label: " << predicted_label << endl;
+            if (gestureLabel >= 0)
+            {
+                ROS_INFO("Predicted label was %d, expected label was %d.", predicted_label, gestureLabel);
+            }
+            if (predicted_label == gestureLabel)
+            {
+                trainingData.addSample( predicted_label, gesture);
+                ROS_INFO("Added correctly labeled sample to training data.");
+            }
             return true;
 
         }

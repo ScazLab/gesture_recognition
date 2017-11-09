@@ -142,7 +142,7 @@ protected:
      * @brief will record 1s of ARuco data and use the pipeline to predict the class of the gesture
      * @return true/false if success/failure
      */
-    bool predictOnce(GRT::GestureRecognitionPipeline &pipeline, int object_id);
+    bool predictOnce(GRT::GestureRecognitionPipeline &pipeline, GRT::UINT gestureLabel, int object_id);
 
     State getState() {return state; };
     std::string getAction() {return action; };
