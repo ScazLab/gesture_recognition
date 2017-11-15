@@ -21,6 +21,7 @@ GestureRec::GestureRec(string name, string limb) : PerceptionClientImpl(name, li
 
     // just for now, expect marker 198
     object_id = 201;
+    publish = false;
     // publishGestures();
 
     spinner.start();
@@ -34,46 +35,53 @@ void GestureRec::gestureRecCb(const gesture_recognition::RecState& msg)
 
 void GestureRec::publishGestures()
 {
+    setObjectID(object_id);
     gesture_recognition::RecState msg;
     msg.gesture_found = false;
     msg.predicted_class = 0;
 
-    GRT::MatrixFloat gesture;
-    GRT::Vector< GRT:: VectorFloat > gestureVec;
-    GRT::VectorFloat sample(3);
-
     if(!pipeline.getTrained())
-        {
-            ROS_INFO("Pipeline hasn't been trained yet so no gestures will be recognized");
-        }
-
-    while (ros::ok())
     {
+            ROS_INFO("Pipeline hasn't been trained yet so no gestures will be recognized");
+    }
 
+    GRT::VectorFloat currPos(trainingData.getNumDimensions());
 
-        sample[0] = curr_object_pos.x;
-        sample[1] = curr_object_pos.y;
-        sample[2] = curr_object_pos.z;
-        gestureVec.push_back(sample);
+    ros::Rate r(60);
+    while(ros::ok() && waitForData())
+    {
+        currPos[0] = curr_object_pos.x;
+        currPos[1] = curr_object_pos.y;
+        currPos[2] = curr_object_pos.z;
 
-        gesture = gestureVec;
-
-        if(pipeline.getTrained())
+        if(publish && pipeline.getTrained())
         {
-            if(pipeline.predict(gesture)){
+            if(!pipeline.predict(currPos))
+            {
+                ROS_INFO("Unable to predict using the pipeline. Check that it has been trained with appropriate samples.");
+                publish = false;
+            }
+            else
+            {
                 GRT::UINT predicted_label = pipeline.getPredictedClassLabel();
                 msg.gesture_found = true;
                 msg.predicted_class = predicted_label;
+                gesture_pub.publish(msg);
             }
         }
-
-        gesture_pub.publish(msg);
+        r.sleep();
     }
 }
 
 bool GestureRec::setUpPipeline()
 {
-    pipeline.setClassifier( GRT::DTW() );
+    GRT::DTW dtw;
+    dtw.enableNullRejection(true);
+    // dtw.setNullRejectionCoeff(3);
+    // dtw.enableTrimTrainingData(true, 0.1, 90);
+    // dtw.setOffsetTimeseriesUsingFirstSample(true);
+
+    pipeline.setClassifier( dtw );
     // pipeline.setClassifier( GRT::HMM() );
     return true;
 }
@@ -131,10 +139,17 @@ bool GestureRec::doAction(std::string action, std::string filename)
     }
     else if (action == "predict")
     {
-        if(!predictOnce(pipeline, class_label, object_id)) return false;
+        if(!predictOnce(pipeline, class_label, object_id, filename)) return false;
         setState(DONE);
         return true;
     }
+    else if (action == "publish")
+    {
+        publish = true;
+        setState(DONE);
+        return true;
+    }
+
     setState(ERROR);
     ROS_INFO("Action %s is not allowed.", action.c_str());
     return false;
@@ -209,7 +224,11 @@ bool GestureRec::recordSample(GRT::TimeSeriesClassificationData &trainingData, G
         r.sleep();
     }
 
-    trainingData.addSample( gestureLabel, gesture);
+    GRT::MatrixFloat processedGesture = preProcess(gesture);
+
+    GRT::VectorFloat processedGestureMean(processedGesture.getNumCols());
+
+    trainingData.addSample( gestureLabel, processedGesture);
 
     trainingData.printStats();
 
@@ -229,6 +248,18 @@ bool GestureRec::recordSample(GRT::TimeSeriesClassificationData &trainingData, G
     return true;
 }
 
+GRT::MatrixFloat GestureRec::preProcess(GRT::MatrixFloat rawGesture)
+{
+    if (!rawGesture.znorm())
+    {
+        ROS_ERROR("Unable to normalize data.");
+    }
+    return rawGesture;
+
+}
+
+
+
 bool GestureRec::trainPipeline(GRT::GestureRecognitionPipeline &pipeline, GRT::TimeSeriesClassificationData pipelineData)
 {
 
@@ -237,13 +268,19 @@ bool GestureRec::trainPipeline(GRT::GestureRecognitionPipeline &pipeline, GRT::T
         ROS_ERROR("ERROR: Failed to train the pipeline!");
         return false;
     }
-
+    trainingData = pipelineData;
     return true;
 }
 
-bool GestureRec::predictOnce(GRT::GestureRecognitionPipeline &pipeline, GRT::UINT gestureLabel, int object_id)
+bool GestureRec::predictOnce(GRT::GestureRecognitionPipeline &pipeline, GRT::UINT gestureLabel, int object_id, std::string filename)
 {
     setObjectID(object_id);
+
+    if (!pipeline.getTrained())
+    {
+        ROS_INFO("Pipeline has not been trained, unable to predict gestures.");
+        return false;
+    }
 
     ROS_INFO("Ready to record a gesture!");
     ROS_INFO("Recording in 5 seconds...");
@@ -279,9 +316,11 @@ bool GestureRec::predictOnce(GRT::GestureRecognitionPipeline &pipeline, GRT::UIN
         r.sleep();
     }
 
+    GRT::MatrixFloat processedGesture = preProcess(gesture);
+
     if(pipeline.getTrained())
         {
-            if(!pipeline.predict(gesture))
+            if(!pipeline.predict(processedGesture))
             {
                 ROS_INFO("Unable to predict using the pipeline. Check that it has been trained with appropriate samples.");
                 return false;
@@ -294,8 +333,15 @@ bool GestureRec::predictOnce(GRT::GestureRecognitionPipeline &pipeline, GRT::UIN
             }
             if (predicted_label == gestureLabel)
             {
-                trainingData.addSample( predicted_label, gesture);
+                trainingData.addSample( predicted_label, processedGesture);
                 ROS_INFO("Added correctly labeled sample to training data.");
+                if (!filename.empty())
+                {
+                    if (!trainingData.save( filename ))
+                    {
+                        ROS_INFO("Updated training data was not saved to file!");
+                    }
+                }
             }
             return true;
 

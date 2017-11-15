@@ -70,6 +70,9 @@ private:
     // current action of the gesture rec system
     std::string action;
 
+    // flag to recognize gestures in real time
+    bool publish;
+
 protected:
 
 
@@ -100,6 +103,9 @@ protected:
     bool doAction(std::string action, std::string filename);
 
     bool setAction(const std::string& _action);
+
+
+   GRT::MatrixFloat preProcess(GRT::MatrixFloat rawGesture);
 
      /**
      * @brief records 1 second of ARuco data and adds it to trainingData with the appropriate label
@@ -142,7 +148,7 @@ protected:
      * @brief will record 1s of ARuco data and use the pipeline to predict the class of the gesture
      * @return true/false if success/failure
      */
-    bool predictOnce(GRT::GestureRecognitionPipeline &pipeline, GRT::UINT gestureLabel, int object_id);
+    bool predictOnce(GRT::GestureRecognitionPipeline &pipeline, GRT::UINT gestureLabel, int object_id, std::string filename);
 
     State getState() {return state; };
     std::string getAction() {return action; };
