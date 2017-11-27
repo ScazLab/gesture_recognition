@@ -3,7 +3,7 @@
 using namespace std;
 
 GestureRec::GestureRec(string name, string limb) : PerceptionClientImpl(name, limb),
-                                        nh(name), spinner(4), limb(limb)
+                                        nh(name), spinner(4), limb(limb), it(nh)
 {
 
     std::string action_topic = "/gesture_recognition/action_provider";
@@ -24,7 +24,69 @@ GestureRec::GestureRec(string name, string limb) : PerceptionClientImpl(name, li
     publish = false;
     // publishGestures();
 
+
+    // display
+    im_pub = it.advertise("/robot/xdisplay", 1);
+    im_h = 600;
+    im_w = 1024;
+    im_w_delim = 8;
+
+    rec_state.gesture_found = false;
+    rec_state.predicted_class = 0;
+
+    red   = cv::Scalar(  44,  48, 201); // BGR color code
+    green = cv::Scalar(  60, 160,  60);
+    blue  = cv::Scalar( 200, 162,  77);
+    black = cv::Scalar(   0,   0,   0);
+
+    displayRecState();
+
+
     spinner.start();
+}
+
+void GestureRec::displayRecState()
+{
+    cv::Mat res(im_h,im_w,CV_8UC3, cv::Scalar(255, 255, 255));
+
+    cv::Scalar col = cv::Scalar::all(60);
+
+    int thickness = 3;
+    int baseline = 0;
+    int fontFace = cv::FONT_HERSHEY_SIMPLEX;
+    int fontScale = 2;
+
+    // place a centered title on top
+    std::string title = "GESTURE RECOGNITION STATE";
+    cv::Size textSize = cv::getTextSize( title, fontFace, fontScale, thickness, &baseline);
+    cv::Point textOrg((res.cols - textSize.width)/2, (res.rows + textSize.height)/6);
+    putText(res, title, textOrg, fontFace, fontScale, col, thickness, CV_AA);
+
+    putText(res, "Gesture Found:", cv::Point(20, 300), fontFace, fontScale/2, col, 2, 8);
+    if (rec_state.gesture_found)
+    {
+        putText(res, "YES", cv::Point(250, 350), fontFace, fontScale, col, thickness, CV_AA);
+    }
+    else
+    {
+       putText(res, "NONE", cv::Point(250, 350), fontFace, fontScale, col, thickness, CV_AA);
+    }
+
+    putText(res, "Class Label:", cv::Point(20, 400), fontFace, fontScale/2, col, 2, 8);
+    if (rec_state.gesture_found)
+    {
+        putText(res, to_string(rec_state.predicted_class), cv::Point(250, 450), fontFace, fontScale/1.25, col, thickness, CV_AA);
+    }
+    else
+    {
+        putText(res, "NONE", cv::Point(250, 450), fontFace, fontScale/1.25, col, thickness, CV_AA);
+    }
+
+    cv_bridge::CvImage msg;
+    msg.encoding = sensor_msgs::image_encodings::BGR8;
+    msg.image    = res;
+
+    im_pub.publish(msg.toImageMsg());
 }
 
 void GestureRec::gestureRecCb(const gesture_recognition::RecState& msg)
@@ -146,6 +208,21 @@ bool GestureRec::doAction(std::string action, std::string filename)
     else if (action == "publish")
     {
         publish = true;
+        setState(DONE);
+        return true;
+    }
+    else if (action == "print")
+    {
+        GRT::TimeSeriesClassificationData dataset;
+        if (!filename.empty())
+        {
+            dataset.load(filename);
+        }
+        else
+        {
+            dataset = trainingData;
+        }
+        dataset.printStats();
         setState(DONE);
         return true;
     }
@@ -333,7 +410,7 @@ bool GestureRec::predictOnce(GRT::GestureRecognitionPipeline &pipeline, GRT::UIN
             }
             if (predicted_label == gestureLabel)
             {
-                trainingData.addSample( predicted_label, processedGesture);
+                trainingData.addSample( gestureLabel, processedGesture);
                 ROS_INFO("Added correctly labeled sample to training data.");
                 if (!filename.empty())
                 {

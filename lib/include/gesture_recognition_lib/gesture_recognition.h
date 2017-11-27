@@ -5,6 +5,9 @@
 
 #include <ros/ros.h>
 #include <ros/console.h>
+#include <image_transport/image_transport.h>
+#include <cv_bridge/cv_bridge.h>
+#include <sensor_msgs/image_encodings.h>
 #include <aruco_msgs/MarkerArray.h>
 #include <gesture_recognition/DoAction.h>
 #include <gesture_recognition/GestureState.h>
@@ -73,8 +76,27 @@ private:
     // flag to recognize gestures in real time
     bool publish;
 
+
+    // DISPLAY
+    image_transport::ImageTransport it;
+    image_transport::Publisher im_pub;
+
+    gesture_recognition::RecState rec_state;
+
+    int im_h;
+    int im_w;
+    int im_w_delim;
+
+    cv::Scalar red;
+    cv::Scalar green;
+    cv::Scalar blue;
+    cv::Scalar black;
+
+
 protected:
 
+
+    void displayRecState();
 
     /**
      * @brief initialize training data dimensions, name, and info
