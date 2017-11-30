@@ -76,6 +76,7 @@ private:
     // flag to recognize gestures in real time
     bool publish;
 
+    GRT::DTW dtw;
 
     // DISPLAY
     image_transport::ImageTransport it;
@@ -95,6 +96,7 @@ private:
 
 protected:
 
+    int computeLikelihood(int class_name);
 
     void displayRecState();
 

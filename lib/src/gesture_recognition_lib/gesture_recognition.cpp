@@ -62,24 +62,57 @@ void GestureRec::displayRecState()
     cv::Point textOrg((res.cols - textSize.width)/2, (res.rows + textSize.height)/6);
     putText(res, title, textOrg, fontFace, fontScale, col, thickness, CV_AA);
 
-    putText(res, "Gesture Found:", cv::Point(20, 300), fontFace, fontScale/2, col, 2, 8);
+    putText(res, "Gesture Found:", cv::Point(20, 200), fontFace, fontScale/2, col, 2, 8);
     if (rec_state.gesture_found)
     {
-        putText(res, "YES", cv::Point(250, 350), fontFace, fontScale, col, thickness, CV_AA);
+        putText(res, "YES", cv::Point(250, 250), fontFace, fontScale/1.25, col, thickness, CV_AA);
     }
     else
     {
-       putText(res, "NONE", cv::Point(250, 350), fontFace, fontScale, col, thickness, CV_AA);
+       putText(res, "NONE", cv::Point(250, 250), fontFace, fontScale/1.25, col, thickness, CV_AA);
     }
 
-    putText(res, "Class Label:", cv::Point(20, 400), fontFace, fontScale/2, col, 2, 8);
+    putText(res, "Class Label:", cv::Point(20, 300), fontFace, fontScale/2, col, 2, 8);
     if (rec_state.gesture_found)
     {
-        putText(res, to_string(rec_state.predicted_class), cv::Point(250, 450), fontFace, fontScale/1.25, col, thickness, CV_AA);
+        putText(res, to_string(rec_state.predicted_class), cv::Point(250, 350), fontFace, fontScale/1.25, col, thickness, CV_AA);
     }
     else
     {
-        putText(res, "NONE", cv::Point(250, 450), fontFace, fontScale/1.25, col, thickness, CV_AA);
+        putText(res, "NONE", cv::Point(250, 350), fontFace, fontScale/1.25, col, thickness, CV_AA);
+    }
+
+
+    if (pipeline.getTrained())
+    {
+        // int classes = 4;
+        int classes = trainingData.getNumClasses();
+        int spacing = 500 / classes;
+        // int bar_width;
+        cv::Scalar color;
+        if (spacing > 6)
+        {
+            // bar_width = spacing - 5;
+            for (int i = 0; i < classes; i++)
+            {
+                int x = 500 + i * spacing;
+                int y_start = 450;
+                int likelihood = computeLikelihood(i);
+                ROS_INFO("Likelihood: %d", likelihood);
+                int y_end = 250 + 20 * likelihood;
+                if (i == rec_state.predicted_class)
+                {
+                    color = green;
+                }
+                else
+                {
+                    color = red;
+                }
+                rectangle(res, cv::Point(x, y_start), cv::Point(x+50, y_end), color, -1);
+                putText(res, to_string(100 - 10*likelihood), cv::Point(x+5, y_end - 20), fontFace, fontScale/2, col, thickness, CV_AA);
+                putText(res, to_string(i), cv::Point(x+8, y_start + 55), fontFace, fontScale/1.25, col, thickness, CV_AA);
+            }
+        }
     }
 
     cv_bridge::CvImage msg;
@@ -89,10 +122,54 @@ void GestureRec::displayRecState()
     im_pub.publish(msg.toImageMsg());
 }
 
+int GestureRec::computeLikelihood(int class_name)
+{
+    GRT::Classifier *classifier = pipeline.getClassifier();
+    GRT::DTW *new_dtw = &dtw;
+    new_dtw->deepCopyFrom(classifier);
+    GRT::VectorFloat classDistances = new_dtw->getClassDistances();
+    GRT::UINT numTemplates = new_dtw->getNumTemplates();
+    GRT::Vector < GRT::DTWTemplate > templatesBuffer = new_dtw->getModels();
+
+    int bestClassDistance = 1e8;
+
+    for (GRT::UINT k = 0; k < numTemplates; k++)
+    {
+        int classDistance = classDistances[k];
+        ROS_INFO("Class distance: %d", classDistance);
+        int template_class = templatesBuffer[k].classLabel;
+        ROS_INFO("Template class: %d", template_class);
+        if (template_class == class_name)
+        {
+            if (classDistance < bestClassDistance)
+            {
+                bestClassDistance = classDistance;
+            }
+        }
+    }
+    int likelihood;
+    if (bestClassDistance > 1e-8)
+    {
+        likelihood = 1.0/bestClassDistance;
+    }
+    else
+    {
+        likelihood = 1.0;
+    }
+    ROS_INFO("Likelihood: %d", likelihood);
+    // return likelihood;
+
+    return bestClassDistance;
+    // return maxClassLikelihood;
+}
+
 void GestureRec::gestureRecCb(const gesture_recognition::RecState& msg)
 {
     gesture_found = msg.gesture_found;
     gesture_id = msg.predicted_class;
+
+    rec_state.gesture_found = msg.gesture_found;
+    rec_state.predicted_class = msg.predicted_class;
 }
 
 void GestureRec::publishGestures()
@@ -137,7 +214,6 @@ void GestureRec::publishGestures()
 
 bool GestureRec::setUpPipeline()
 {
-    GRT::DTW dtw;
     dtw.enableNullRejection(true);
     // dtw.setNullRejectionCoeff(3);
     // dtw.enableTrimTrainingData(true, 0.1, 90);
@@ -404,6 +480,12 @@ bool GestureRec::predictOnce(GRT::GestureRecognitionPipeline &pipeline, GRT::UIN
             }
 
             GRT::UINT predicted_label = pipeline.getPredictedClassLabel();
+
+            gesture_recognition::RecState msg;
+            msg.gesture_found = true;
+            msg.predicted_class = predicted_label;
+            gesture_pub.publish(msg);
+
             if (gestureLabel >= 0)
             {
                 ROS_INFO("Predicted label was %d, expected label was %d.", predicted_label, gestureLabel);
@@ -420,6 +502,7 @@ bool GestureRec::predictOnce(GRT::GestureRecognitionPipeline &pipeline, GRT::UIN
                     }
                 }
             }
+            displayRecState();
             return true;
 
         }
