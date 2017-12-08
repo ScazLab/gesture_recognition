@@ -37,6 +37,8 @@ private:
 
     std::string limb; // Limb to use for ARuco detection
 
+    bool predict_and_add; // setting for predictOnce to add sample to trainingData or not
+
     // class label to record
     int class_label;
 
@@ -54,6 +56,7 @@ private:
 
     // publisher for gesture recognition system state
     ros::Publisher state_pub;
+    ros::Subscriber state_sub;
 
     // training data to be used. add samples using recordSample
     GRT::TimeSeriesClassificationData trainingData;
@@ -76,6 +79,10 @@ private:
     // flag to recognize gestures in real time
     bool publish;
 
+    ros::Timer rec_timer;
+    ros::Timer thread_timer;
+    double rec_window;
+
     GRT::DTW dtw;
 
     // DISPLAY
@@ -84,19 +91,26 @@ private:
 
     gesture_recognition::RecState rec_state;
 
+    std::string display_text;
+    ros::Timer  text_timer;
+    double      text_duration;
+
     int im_h;
     int im_w;
     int im_w_delim;
 
     cv::Scalar red;
     cv::Scalar green;
+    cv::Scalar yellow;
     cv::Scalar blue;
     cv::Scalar black;
 
 
 protected:
 
-    int computeLikelihood(int class_name);
+    int getClassDistance(int class_name);
+
+    void displayText(cv::Mat& in);
 
     void displayRecState();
 
@@ -163,6 +177,14 @@ protected:
      */
     void gestureRecCb(const gesture_recognition::RecState &msg);
 
+    void gestureStateCb(const gesture_recognition::GestureState& msg);
+
+    void beginPublishThread();
+
+    void beginRecording(GRT::MatrixFloat*);
+
+    void predictPublishCb(GRT::MatrixFloat*);
+
     /**
      * @brief publishes status of gesture recognition in real time
      */
@@ -176,7 +198,10 @@ protected:
 
     State getState() {return state; };
     std::string getAction() {return action; };
-
+    bool getPredictAdd() {return predict_and_add; };
+    void setPredictAdd(bool predict);
+    void setDisplayText(const std::string &s);
+    void deleteDisplayText();
 
 
 public:

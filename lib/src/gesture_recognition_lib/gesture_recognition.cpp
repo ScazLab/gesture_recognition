@@ -11,6 +11,7 @@ GestureRec::GestureRec(string name, string limb) : PerceptionClientImpl(name, li
 
     setUpTrainingData();
     setUpPipeline();
+    setPredictAdd(true);
 
     std::string result_topic = "/gesture_recognition/result";
     gesture_pub = nh.advertise<gesture_recognition::RecState>(result_topic, 1000);
@@ -18,6 +19,7 @@ GestureRec::GestureRec(string name, string limb) : PerceptionClientImpl(name, li
 
     std::string state_topic = "/gesture_recognition/state";
     state_pub = nh.advertise<gesture_recognition::GestureState>(state_topic, 1000);
+    state_sub = nh.subscribe(state_topic, 1000, &GestureRec::gestureStateCb, this);
 
     // just for now, expect marker 198
     object_id = 201;
@@ -33,16 +35,85 @@ GestureRec::GestureRec(string name, string limb) : PerceptionClientImpl(name, li
 
     rec_state.gesture_found = false;
     rec_state.predicted_class = 0;
+    rec_state.expected_class = 0;
+    rec_window = 3.0;
 
-    red   = cv::Scalar(  44,  48, 201); // BGR color code
-    green = cv::Scalar(  60, 160,  60);
-    blue  = cv::Scalar( 200, 162,  77);
-    black = cv::Scalar(   0,   0,   0);
+    red     = cv::Scalar( 44,  48, 201); // BGR color code
+    green   = cv::Scalar( 60, 160,  60);
+    yellow  = cv::Scalar( 60, 200, 200);
+    blue    = cv::Scalar(200, 162,  77);
+    black   = cv::Scalar(  0,   0,   0);
 
     displayRecState();
 
 
     spinner.start();
+}
+
+void GestureRec::displayText(cv::Mat& in)
+{
+    if (display_text != "")
+    {
+        int thickness = 3;
+        int baseline = 0;
+        int fontFace = cv::FONT_HERSHEY_SIMPLEX;
+        int fontScale = 2;
+
+        int border = 20;
+        int max_width = 700;
+        cv::Size textSize = cv::getTextSize(display_text, fontFace, fontScale, thickness, &baseline);
+        int numLines = int(textSize.width/max_width)+1;
+
+        if (numLines > 5)
+        {
+            fontScale = 1.6;
+            thickness = 2;
+            textSize = cv::getTextSize(display_text, fontFace, fontScale, thickness, &baseline);
+            numLines = int(textSize.width/max_width);
+        }
+
+        std::vector<std::string> line;
+        std::vector<cv::Size>    size;
+
+        int interline = 20;
+        int rec_height = -interline;
+        int rec_width = 0;
+        int line_length = int(display_text.size()/numLines);
+
+        for (int i = 0; i < numLines; ++i)
+        {
+            if (i==numLines-1)
+            {
+                line.push_back(display_text.substr(i*line_length, display_text.size()-i*line_length));
+            }
+            else
+            {
+                line.push_back(display_text.substr(i*line_length,line_length));
+            }
+
+            size.push_back(cv::getTextSize( line.back(), fontFace, fontScale, thickness, &baseline));
+            if (size.back().width>rec_width) rec_width=size.back().width;
+            rec_height += interline + size.back().height;
+        }
+
+        rec_height += 2*border;
+        rec_width  += 2*border;
+
+        cv::Point rectOrg((in.cols - rec_width)/2, (in.rows - rec_height)/2);
+        cv::Point rectEnd((in.cols + rec_width)/2, (in.rows + rec_height)/2);
+        rectangle(in, rectOrg, rectEnd, blue, -1);
+
+        int textOrgY = rectOrg.y + border;
+        for (int i = 0; i < numLines; ++i)
+        {
+            textOrgY += size[i].height;
+            cv::Point textOrg((in.cols - size[i].width)/2, textOrgY);
+            putText(in, line[i], textOrg, fontFace, fontScale, cv::Scalar::all(225), thickness, CV_AA);
+            textOrgY += interline;
+        }
+
+        printf("\n");
+    }
 }
 
 void GestureRec::displayRecState()
@@ -63,25 +134,17 @@ void GestureRec::displayRecState()
     putText(res, title, textOrg, fontFace, fontScale, col, thickness, CV_AA);
 
     putText(res, "Gesture Found:", cv::Point(20, 200), fontFace, fontScale/2, col, 2, 8);
-    if (rec_state.gesture_found)
-    {
-        putText(res, "YES", cv::Point(250, 250), fontFace, fontScale/1.25, col, thickness, CV_AA);
-    }
-    else
-    {
-       putText(res, "NONE", cv::Point(250, 250), fontFace, fontScale/1.25, col, thickness, CV_AA);
-    }
-
     putText(res, "Class Label:", cv::Point(20, 300), fontFace, fontScale/2, col, 2, 8);
     if (rec_state.gesture_found)
     {
+        putText(res, "YES", cv::Point(250, 250), fontFace, fontScale/1.25, col, thickness, CV_AA);
         putText(res, to_string(rec_state.predicted_class), cv::Point(250, 350), fontFace, fontScale/1.25, col, thickness, CV_AA);
     }
     else
     {
+        putText(res, "NONE", cv::Point(250, 250), fontFace, fontScale/1.25, col, thickness, CV_AA);
         putText(res, "NONE", cv::Point(250, 350), fontFace, fontScale/1.25, col, thickness, CV_AA);
     }
-
 
     if (pipeline.getTrained())
     {
@@ -90,6 +153,7 @@ void GestureRec::displayRecState()
         int spacing = 500 / classes;
         // int bar_width;
         cv::Scalar color;
+        bool predicted_correctly = (rec_state.expected_class == rec_state.predicted_class);
         if (spacing > 6)
         {
             // bar_width = spacing - 5;
@@ -97,10 +161,22 @@ void GestureRec::displayRecState()
             {
                 int x = 500 + i * spacing;
                 int y_start = 450;
-                int likelihood = computeLikelihood(i);
-                ROS_INFO("Likelihood: %d", likelihood);
-                int y_end = 250 + 20 * likelihood;
-                if (i == rec_state.predicted_class)
+                int distance = getClassDistance(i);
+                ROS_INFO("Distance for class %d: %d", i, distance);
+                if (distance > 10)
+                {
+                    distance = 10;
+                }
+                int y_end = 250 + 20 * distance;
+                if (predicted_correctly && i == rec_state.predicted_class)
+                {
+                    color = green;
+                }
+                else if (!predicted_correctly && i == rec_state.predicted_class)
+                {
+                    color = yellow;
+                }
+                else if (!predicted_correctly && i == rec_state.expected_class)
                 {
                     color = green;
                 }
@@ -109,11 +185,13 @@ void GestureRec::displayRecState()
                     color = red;
                 }
                 rectangle(res, cv::Point(x, y_start), cv::Point(x+50, y_end), color, -1);
-                putText(res, to_string(100 - 10*likelihood), cv::Point(x+5, y_end - 20), fontFace, fontScale/2, col, thickness, CV_AA);
+                putText(res, to_string(100 - 10*distance), cv::Point(x+5, y_end - 20), fontFace, fontScale/2, col, thickness, CV_AA);
                 putText(res, to_string(i), cv::Point(x+8, y_start + 55), fontFace, fontScale/1.25, col, thickness, CV_AA);
             }
         }
     }
+
+    displayText(res);
 
     cv_bridge::CvImage msg;
     msg.encoding = sensor_msgs::image_encodings::BGR8;
@@ -122,7 +200,7 @@ void GestureRec::displayRecState()
     im_pub.publish(msg.toImageMsg());
 }
 
-int GestureRec::computeLikelihood(int class_name)
+int GestureRec::getClassDistance(int class_name)
 {
     GRT::Classifier *classifier = pipeline.getClassifier();
     GRT::DTW *new_dtw = &dtw;
@@ -131,36 +209,16 @@ int GestureRec::computeLikelihood(int class_name)
     GRT::UINT numTemplates = new_dtw->getNumTemplates();
     GRT::Vector < GRT::DTWTemplate > templatesBuffer = new_dtw->getModels();
 
-    int bestClassDistance = 1e8;
-
     for (GRT::UINT k = 0; k < numTemplates; k++)
     {
-        int classDistance = classDistances[k];
-        ROS_INFO("Class distance: %d", classDistance);
         int template_class = templatesBuffer[k].classLabel;
-        ROS_INFO("Template class: %d", template_class);
         if (template_class == class_name)
         {
-            if (classDistance < bestClassDistance)
-            {
-                bestClassDistance = classDistance;
-            }
+            return classDistances[k];
         }
     }
-    int likelihood;
-    if (bestClassDistance > 1e-8)
-    {
-        likelihood = 1.0/bestClassDistance;
-    }
-    else
-    {
-        likelihood = 1.0;
-    }
-    ROS_INFO("Likelihood: %d", likelihood);
-    // return likelihood;
-
-    return bestClassDistance;
-    // return maxClassLikelihood;
+    ROS_INFO("Could not find distance for class %d", class_name);
+    return 1e8;
 }
 
 void GestureRec::gestureRecCb(const gesture_recognition::RecState& msg)
@@ -170,6 +228,79 @@ void GestureRec::gestureRecCb(const gesture_recognition::RecState& msg)
 
     rec_state.gesture_found = msg.gesture_found;
     rec_state.predicted_class = msg.predicted_class;
+    rec_state.expected_class = msg.expected_class;
+}
+
+
+void GestureRec::gestureStateCb(const gesture_recognition::GestureState& msg)
+{
+    ROS_INFO("Called gestureStateCb");
+    if (msg.publishing)
+    {
+        // beginPublishThread();
+    }
+}
+
+void GestureRec::beginPublishThread()
+{
+    if (publish)
+    {
+        GRT::MatrixFloat gesture;
+        beginRecording(&gesture);
+        rec_timer = nh.createTimer(ros::Duration(rec_window),
+                                    boost::bind(&GestureRec::predictPublishCb, this, &gesture), true);
+        // thread_timer = nh.createTimer(ros::Duration(0.5),
+        //                                boost::bind(&GestureRec::beginPublishThread, this), true);
+    }
+    // begin recording a gesture
+    // begin timer to stop recording and run prediction on data
+    // timer callback should be beginPublishThread
+}
+
+void GestureRec::beginRecording(GRT::MatrixFloat *gesture)
+{
+    GRT::VectorFloat currPos(trainingData.getNumDimensions());
+
+    GRT::UINT gestureLength = 0;
+
+    // record a gesture sample
+    ros::Rate r(60);
+    while(ros::ok() && waitForData() && gestureLength < 30)
+    {
+        currPos[0] = curr_object_pos.x;
+        currPos[1] = curr_object_pos.y;
+        currPos[2] = curr_object_pos.z;
+
+        // ROS_INFO("object is in: %g %g %g", curr_object_pos.x,
+        //                                         curr_object_pos.y,
+        //                                         curr_object_pos.z);
+        gesture->push_back(currPos);
+        gestureLength++;
+        r.sleep();
+    }
+
+    // *gesture = preProcess(*gesture);
+}
+
+void GestureRec::predictPublishCb(GRT::MatrixFloat *gesture)
+{
+    if(pipeline.getTrained())
+        {
+            // GRT::MatrixFloat predictGesture(*gesture);
+            // if(!pipeline.predict(*gesture))
+            // {
+            //     ROS_INFO("Unable to predict using the pipeline. Check that it has been trained with appropriate samples.");
+            //     return;
+            // }
+
+            GRT::UINT predicted_label = pipeline.getPredictedClassLabel();
+
+            gesture_recognition::RecState msg;
+            msg.gesture_found = true;
+            msg.predicted_class = predicted_label;
+            gesture_pub.publish(msg);
+            displayRecState();
+        }
 }
 
 void GestureRec::publishGestures()
@@ -224,6 +355,22 @@ bool GestureRec::setUpPipeline()
     return true;
 }
 
+void GestureRec::setDisplayText(const std::string &s)
+{
+    display_text = s;
+}
+
+void GestureRec::deleteDisplayText()
+{
+    setDisplayText("");
+    displayRecState();
+}
+
+void GestureRec::setPredictAdd(bool predict)
+{
+    predict_and_add = predict;
+}
+
 bool GestureRec::setState(int _state)
 {
     state.set(_state);
@@ -238,6 +385,7 @@ bool GestureRec::publishState()
     msg.state = string(getState());
     msg.action = getAction();
     msg.object = object_id;
+    msg.publishing = publish;
 
     state_pub.publish(msg);
 
@@ -284,6 +432,8 @@ bool GestureRec::doAction(std::string action, std::string filename)
     else if (action == "publish")
     {
         publish = true;
+        publishState();
+        beginPublishThread();
         setState(DONE);
         return true;
     }
@@ -342,7 +492,8 @@ bool GestureRec::actionCb(gesture_recognition::DoAction::Request &req,
 bool GestureRec::recordSample(GRT::TimeSeriesClassificationData &trainingData, GRT::UINT gestureLabel, int object_id, std::string filename)
 {
     setObjectID(object_id);
-
+    setDisplayText("Recording in 5...");
+    displayRecState();
     ROS_INFO("Ready to record a gesture!");
     ROS_INFO("Recording in 5 seconds...");
     ros::Duration(1.0).sleep();
@@ -354,6 +505,8 @@ bool GestureRec::recordSample(GRT::TimeSeriesClassificationData &trainingData, G
     ros::Duration(1.0).sleep();
     ROS_INFO("Recording in 1 second...");
     ros::Duration(1.0).sleep();
+    setDisplayText("Recording!");
+    displayRecState();
     ROS_INFO("Recording!");
 
     GRT::MatrixFloat gesture;
@@ -382,7 +535,10 @@ bool GestureRec::recordSample(GRT::TimeSeriesClassificationData &trainingData, G
     GRT::VectorFloat processedGestureMean(processedGesture.getNumCols());
 
     trainingData.addSample( gestureLabel, processedGesture);
-
+    setDisplayText("Sample Recorded");
+    displayRecState();
+    ros::Duration(1.0).sleep();
+    deleteDisplayText();
     trainingData.printStats();
 
     if (!filename.empty())
@@ -435,6 +591,8 @@ bool GestureRec::predictOnce(GRT::GestureRecognitionPipeline &pipeline, GRT::UIN
         return false;
     }
 
+    setDisplayText("Recording in 5...");
+    displayRecState();
     ROS_INFO("Ready to record a gesture!");
     ROS_INFO("Recording in 5 seconds...");
     ros::Duration(1.0).sleep();
@@ -446,6 +604,8 @@ bool GestureRec::predictOnce(GRT::GestureRecognitionPipeline &pipeline, GRT::UIN
     ros::Duration(1.0).sleep();
     ROS_INFO("Recording in 1 second...");
     ros::Duration(1.0).sleep();
+    setDisplayText("Recording!");
+    displayRecState();
     ROS_INFO("Recording!");
 
     GRT::MatrixFloat gesture;
@@ -468,7 +628,10 @@ bool GestureRec::predictOnce(GRT::GestureRecognitionPipeline &pipeline, GRT::UIN
         gestureLength++;
         r.sleep();
     }
-
+    setDisplayText("Sample recorded, running prediction");
+    displayRecState();
+    ros::Duration(1.0).sleep();
+    deleteDisplayText();
     GRT::MatrixFloat processedGesture = preProcess(gesture);
 
     if(pipeline.getTrained())
@@ -484,13 +647,14 @@ bool GestureRec::predictOnce(GRT::GestureRecognitionPipeline &pipeline, GRT::UIN
             gesture_recognition::RecState msg;
             msg.gesture_found = true;
             msg.predicted_class = predicted_label;
+            msg.expected_class = gestureLabel;
             gesture_pub.publish(msg);
 
             if (gestureLabel >= 0)
             {
                 ROS_INFO("Predicted label was %d, expected label was %d.", predicted_label, gestureLabel);
             }
-            if (predicted_label == gestureLabel)
+            if (getPredictAdd())
             {
                 trainingData.addSample( gestureLabel, processedGesture);
                 ROS_INFO("Added correctly labeled sample to training data.");
