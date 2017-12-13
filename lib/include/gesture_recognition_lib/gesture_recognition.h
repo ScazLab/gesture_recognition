@@ -183,12 +183,7 @@ protected:
 
     void beginRecording(GRT::MatrixFloat*);
 
-    void predictPublishCb(GRT::MatrixFloat*);
-
-    /**
-     * @brief publishes status of gesture recognition in real time
-     */
-    void publishGestures();
+    void predictPublishCb(GRT::MatrixFloat);
 
     /**
      * @brief will record 1s of ARuco data and use the pipeline to predict the class of the gesture

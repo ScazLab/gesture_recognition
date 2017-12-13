@@ -24,8 +24,6 @@ GestureRec::GestureRec(string name, string limb) : PerceptionClientImpl(name, li
     // just for now, expect marker 198
     object_id = 201;
     publish = false;
-    // publishGestures();
-
 
     // display
     im_pub = it.advertise("/robot/xdisplay", 1);
@@ -35,7 +33,7 @@ GestureRec::GestureRec(string name, string limb) : PerceptionClientImpl(name, li
 
     rec_state.gesture_found = false;
     rec_state.predicted_class = 0;
-    rec_state.expected_class = 0;
+    rec_state.expected_class = -1;
     rec_window = 3.0;
 
     red     = cv::Scalar( 44,  48, 201); // BGR color code
@@ -153,7 +151,11 @@ void GestureRec::displayRecState()
         int spacing = 500 / classes;
         // int bar_width;
         cv::Scalar color;
-        bool predicted_correctly = (rec_state.expected_class == rec_state.predicted_class);
+        bool predicted_correctly = true;
+        // if (rec_state.expected_class != -1)
+        // {
+           // predicted_correctly = (rec_state.expected_class == rec_state.predicted_class);
+        // }
         if (spacing > 6)
         {
             // bar_width = spacing - 5;
@@ -247,14 +249,12 @@ void GestureRec::beginPublishThread()
     {
         GRT::MatrixFloat gesture;
         beginRecording(&gesture);
-        rec_timer = nh.createTimer(ros::Duration(rec_window),
-                                    boost::bind(&GestureRec::predictPublishCb, this, &gesture), true);
-        // thread_timer = nh.createTimer(ros::Duration(0.5),
-        //                                boost::bind(&GestureRec::beginPublishThread, this), true);
+        // gesture.print();
+        rec_timer = nh.createTimer(ros::Duration(0.5),
+                                    boost::bind(&GestureRec::predictPublishCb, this, gesture), true);
+        thread_timer = nh.createTimer(ros::Duration(0.5),
+                                       boost::bind(&GestureRec::beginPublishThread, this), true);
     }
-    // begin recording a gesture
-    // begin timer to stop recording and run prediction on data
-    // timer callback should be beginPublishThread
 }
 
 void GestureRec::beginRecording(GRT::MatrixFloat *gesture)
@@ -278,20 +278,19 @@ void GestureRec::beginRecording(GRT::MatrixFloat *gesture)
         gestureLength++;
         r.sleep();
     }
-
-    // *gesture = preProcess(*gesture);
+    *gesture = preProcess(*gesture);
 }
 
-void GestureRec::predictPublishCb(GRT::MatrixFloat *gesture)
+void GestureRec::predictPublishCb(GRT::MatrixFloat gesture)
 {
+    gesture.print();
     if(pipeline.getTrained())
         {
-            // GRT::MatrixFloat predictGesture(*gesture);
-            // if(!pipeline.predict(*gesture))
-            // {
-            //     ROS_INFO("Unable to predict using the pipeline. Check that it has been trained with appropriate samples.");
-            //     return;
-            // }
+            if(!pipeline.predict(gesture))
+            {
+                ROS_INFO("Unable to predict using the pipeline. Check that it has been trained with appropriate samples.");
+                return;
+            }
 
             GRT::UINT predicted_label = pipeline.getPredictedClassLabel();
 
@@ -301,46 +300,6 @@ void GestureRec::predictPublishCb(GRT::MatrixFloat *gesture)
             gesture_pub.publish(msg);
             displayRecState();
         }
-}
-
-void GestureRec::publishGestures()
-{
-    setObjectID(object_id);
-    gesture_recognition::RecState msg;
-    msg.gesture_found = false;
-    msg.predicted_class = 0;
-
-    if(!pipeline.getTrained())
-    {
-            ROS_INFO("Pipeline hasn't been trained yet so no gestures will be recognized");
-    }
-
-    GRT::VectorFloat currPos(trainingData.getNumDimensions());
-
-    ros::Rate r(60);
-    while(ros::ok() && waitForData())
-    {
-        currPos[0] = curr_object_pos.x;
-        currPos[1] = curr_object_pos.y;
-        currPos[2] = curr_object_pos.z;
-
-        if(publish && pipeline.getTrained())
-        {
-            if(!pipeline.predict(currPos))
-            {
-                ROS_INFO("Unable to predict using the pipeline. Check that it has been trained with appropriate samples.");
-                publish = false;
-            }
-            else
-            {
-                GRT::UINT predicted_label = pipeline.getPredictedClassLabel();
-                msg.gesture_found = true;
-                msg.predicted_class = predicted_label;
-                gesture_pub.publish(msg);
-            }
-        }
-        r.sleep();
-    }
 }
 
 bool GestureRec::setUpPipeline()
