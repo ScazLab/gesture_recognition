@@ -45,6 +45,8 @@
   <depend>aruco_msgs</depend>
   <depend>aruco_ros</depend>
   <depend>rosconsole</depend>
+  <depend>human_robot_collaboration</depend>
+  <depend>phasespace_publisher</depend>
 
   <build_depend>message_generation</build_depend>
   <exec_depend>message_runtime</exec_depend>

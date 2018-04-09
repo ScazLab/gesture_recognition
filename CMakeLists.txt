@@ -15,6 +15,7 @@ find_package(catkin REQUIRED COMPONENTS
              rosconsole
              message_generation
              human_robot_collaboration
+             phasespace_publisher
              )
 
 ## System dependencies are found with CMake's conventions

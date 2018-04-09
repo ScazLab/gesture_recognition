@@ -23,7 +23,12 @@
     <arg name="useRobot"            default="true"/>
     <param name="gesture_recognition/use_robot" value="$arg(useRobot)"/>
 
+    <arg name="usePhasespace" default="True"/>
+    <param name="gesture_recognition/use_phasespace" value="$(arg usePhasespace)"/>
+
     <node pkg="gesture_recognition" type="gesture_recognition_node" name="gesture_recognition" output="screen" respawn="true"></node>
+
+    <include file="$(find phasespace_publisher)/launch/phasespace_publisher.launch"/>
 
     <!-- <include file="$(find rosbridge_server)/launch/rosbridge_websocket.launch"/> -->
     <!-- <include file="$(find trac_ik_baxter)/launch/ik_server.launch"/> -->

@@ -21,8 +21,28 @@ GestureRec::GestureRec(string name, string limb) : PerceptionClientImpl(name, li
     state_pub = nh.advertise<gesture_recognition::GestureState>(state_topic, 1000);
     state_sub = nh.subscribe(state_topic, 1000, &GestureRec::gestureStateCb, this);
 
-    // just for now, expect marker 198
-    object_id = 201;
+    // phasespace
+    std::string ps_topic = "/ps_markers/phasespace_points";
+    // ps_sub = nh.subscribe(ps_topic, 1000, &GestureRec::psMarkersCb, this);
+
+    // if using phasespace, overwrite perception client subscriber
+    bool use_phasespace;
+    if (ros::param::get("/gesture_recognition/use_phasespace", use_phasespace))
+    {
+        if (use_phasespace)
+        {
+            sub = ctnh.subscribe(ps_topic, SUBSCRIBER_BUFFER,
+                                     &GestureRec::PsObjectCb, this);
+        }
+    }
+
+    // set this to the ARuco id desired
+    // or, with phasespace, set to
+    // -1 (both hands)
+    // -2 (right hand only)
+    // -3 (left hand only)
+    // service calls using argument object_id will update this value
+    object_id = -1;
     publish = false;
 
     // display
@@ -44,8 +64,64 @@ GestureRec::GestureRec(string name, string limb) : PerceptionClientImpl(name, li
 
     displayRecState();
 
-
     spinner.start();
+}
+
+void GestureRec::PsObjectCb(const phasespace_publisher::PhasespacePtArray& markers)
+{
+    if (markers.points.size() > 0)
+    {
+        available_objects.clear();
+    }
+
+    for (size_t i = 0; i < markers.points.size(); ++i)
+    {
+        curr_id = int(markers.points[i].id);
+        // ROS_DEBUG("Processing object with id %i", curr_id);
+
+        available_objects.push_back(curr_id);
+        objects_found = true;
+
+        // update both hands
+        if (-1 == getObjectID())
+        {
+            if (curr_id < 8)
+            {
+                rh_markers.points.append(markers.points[i]);
+                if (!object_found) { object_found = true; }
+
+            }
+            else if (curr_id > 7 && curr_id < 16)
+            {
+
+                lh_markers.points.append(markers.points[i])
+                if (!object_found) { object_found = true; }
+            }
+
+        }
+        // update right hand only
+        else if (-2 == getObjectID())
+        {
+            if (curr_id < 8)
+            {
+                rh_markers.points.append(markers.points[i])
+                if (!object_found) { object_found = true; }
+
+            }
+        }
+        // update left hand only
+        else if (-3 == getObjectID())
+        {
+            if (curr_id > 7 && curr_id < 16)
+            {
+                lh_markers.points.append(markers.points[i])
+                if (!object_found) { object_found = true; }
+
+            }
+        }
+    }
+
+    if (not is_ok) { is_ok = true; }
 }
 
 void GestureRec::displayText(cv::Mat& in)

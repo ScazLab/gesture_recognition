@@ -13,6 +13,8 @@
 #include <gesture_recognition/GestureState.h>
 #include <gesture_recognition/RecState.h>
 #include <robot_perception/perception_client_impl.h>
+#include <phasespace_publisher/PhasespacePt.h>
+#include <phasespace_publisher/PhasespacePtArray.h>
 
 #include <GRT/GRT.h>
 
@@ -105,6 +107,15 @@ private:
     cv::Scalar blue;
     cv::Scalar black;
 
+    // phasespace subscriber
+    ros::Subscriber ps_sub;
+
+    // phasespace point array for right hand (0-7)
+    phasespace_publisher::PhasespacePtArray rh_markers;
+
+    // phasespace point array for left hand (8-15)
+    phasespace_publisher::PhasespacePtArray lh_markers;
+
 
 protected:
 
@@ -184,6 +195,11 @@ protected:
     void beginRecording(GRT::MatrixFloat*);
 
     void predictPublishCb(GRT::MatrixFloat);
+
+    // void psMarkersCb(const phasespace_publisher::PhasespacePtArray& markers);
+
+    void PsObjectCb(const phasespace_publisher::PhasespacePtArray& markers);
+
 
     /**
      * @brief will record 1s of ARuco data and use the pipeline to predict the class of the gesture
