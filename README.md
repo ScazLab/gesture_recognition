@@ -2,12 +2,20 @@
 Gesture recognition.
 
 Using position data from ARuco, Baxter can use the arm cameras to recognize gestures.
+Alternatively, set the param `use_phasespace` to true to use PhaseSpace marker data instead.
 
-So far, the `gesture_recognition/action_provider` service allows for four actions: `record`, `train`, `predict`, and `test`, with other arguments `class_label`, `filename`, and `object_id`.
+So far, the `gesture_recognition/action_provider` service allows for the following actions:
+    * `record`
+    * `train`
+    * `predict`
+    * `test`
+    * `print`
+with other arguments `class_label`, `filename`, and `object_id`.
 
 Example of recording a gesture sample:
     `rosservice call /gesture_recognition/action_provider '{action: "record", class_label: 1, object_id: 19, filename: "TrainingData.csv"}'`
-    This will add a sample of position data for the marker with ID 19 with class label 1 to the class attribute trainingData and save trainingData to TrainingData.csv. Files are saved to the ~/.ros directory for now.
+    This will add a sample of position data for the marker with ID 19 with class label 1 to the class attribute trainingData and save trainingData to TrainingData.csv. Files are saved to the ~/.ros directory.
+    When using PhaseSpace, use `object_id` -1 to use data from both gloves, -2 for right hand only, and -3 for left hand only.
 
 Example of training the pipeline:
     `rosservice call /gesture_recognition/action_provider '{action: "train"}'`
@@ -19,7 +27,7 @@ Example of testing the pipeline:
 
 Example of predicting using the trained pipeline:
     `rosservice call /gesture_recognition/action_provider '{action: "predict", object_id: 19, class_label: 1}'`
-    Once the pipeline has been trained, you can use `predict` to record a gesture just like with the `record` action and then use the trained pipeline to print the predicted class label of the gesture. The expected class label can also be given, so the sample will be added to the training data if the predicted class label matches the expected class label. Set the class label to -1 if this is not desired.
+    Once the pipeline has been trained, you can use `predict` to record a gesture just like with the `record` action and then use the trained pipeline to print the predicted class label of the gesture. When `predict_and_add` is true, the gesture recording will also be added to the current trainingData, and, if `filename` is specified, the updated training dataset will be saved to `filename`.
 
 Eventually, the `publishGestures()` function should be able to continuously watch for gestures and publish to `gesture_recognition/result` if it has found a gesture and its predicted class label.
 

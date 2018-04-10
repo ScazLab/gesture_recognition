@@ -9,6 +9,21 @@ GestureRec::GestureRec(string name, string limb) : PerceptionClientImpl(name, li
     std::string action_topic = "/gesture_recognition/action_provider";
     service = nh.advertiseService(action_topic, &GestureRec::actionCb, this);
 
+
+    // phasespace
+    std::string ps_topic = "/ps_markers/phasespace_points";
+    // ps_sub = nh.subscribe(ps_topic, 1000, &GestureRec::psMarkersCb, this);
+
+    // if using phasespace, overwrite perception client subscriber
+    if (ros::param::get("/gesture_recognition/use_phasespace", use_phasespace))
+    {
+        if (use_phasespace)
+        {
+            sub = ctnh.subscribe(ps_topic, SUBSCRIBER_BUFFER,
+                                     &GestureRec::PsObjectCb, this);
+        }
+    }
+
     setUpTrainingData();
     setUpPipeline();
     setPredictAdd(true);
@@ -21,20 +36,7 @@ GestureRec::GestureRec(string name, string limb) : PerceptionClientImpl(name, li
     state_pub = nh.advertise<gesture_recognition::GestureState>(state_topic, 1000);
     state_sub = nh.subscribe(state_topic, 1000, &GestureRec::gestureStateCb, this);
 
-    // phasespace
-    std::string ps_topic = "/ps_markers/phasespace_points";
-    // ps_sub = nh.subscribe(ps_topic, 1000, &GestureRec::psMarkersCb, this);
 
-    // if using phasespace, overwrite perception client subscriber
-    bool use_phasespace;
-    if (ros::param::get("/gesture_recognition/use_phasespace", use_phasespace))
-    {
-        if (use_phasespace)
-        {
-            sub = ctnh.subscribe(ps_topic, SUBSCRIBER_BUFFER,
-                                     &GestureRec::PsObjectCb, this);
-        }
-    }
 
     // set this to the ARuco id desired
     // or, with phasespace, set to
@@ -74,9 +76,13 @@ void GestureRec::PsObjectCb(const phasespace_publisher::PhasespacePtArray& marke
         available_objects.clear();
     }
 
+    // clear marker arrays
+    rh_markers = {};
+    lh_markers = {};
+
     for (size_t i = 0; i < markers.points.size(); ++i)
     {
-        curr_id = int(markers.points[i].id);
+        int curr_id = int(markers.points[i].id);
         // ROS_DEBUG("Processing object with id %i", curr_id);
 
         available_objects.push_back(curr_id);
@@ -87,14 +93,14 @@ void GestureRec::PsObjectCb(const phasespace_publisher::PhasespacePtArray& marke
         {
             if (curr_id < 8)
             {
-                rh_markers.points.append(markers.points[i]);
+                rh_markers.points.push_back(markers.points[i]);
                 if (!object_found) { object_found = true; }
 
             }
             else if (curr_id > 7 && curr_id < 16)
             {
 
-                lh_markers.points.append(markers.points[i])
+                lh_markers.points.push_back(markers.points[i]);
                 if (!object_found) { object_found = true; }
             }
 
@@ -104,7 +110,7 @@ void GestureRec::PsObjectCb(const phasespace_publisher::PhasespacePtArray& marke
         {
             if (curr_id < 8)
             {
-                rh_markers.points.append(markers.points[i])
+                rh_markers.points.push_back(markers.points[i]);
                 if (!object_found) { object_found = true; }
 
             }
@@ -114,7 +120,7 @@ void GestureRec::PsObjectCb(const phasespace_publisher::PhasespacePtArray& marke
         {
             if (curr_id > 7 && curr_id < 16)
             {
-                lh_markers.points.append(markers.points[i])
+                lh_markers.points.push_back(markers.points[i]);
                 if (!object_found) { object_found = true; }
 
             }
@@ -343,15 +349,42 @@ void GestureRec::beginRecording(GRT::MatrixFloat *gesture)
     ros::Rate r(60);
     while(ros::ok() && waitForData() && gestureLength < 30)
     {
-        currPos[0] = curr_object_pos.x;
-        currPos[1] = curr_object_pos.y;
-        currPos[2] = curr_object_pos.z;
+        if (!use_phasespace)
+        {
+            currPos[0] = curr_object_pos.x;
+            currPos[1] = curr_object_pos.y;
+            currPos[2] = curr_object_pos.z;
+            gesture->push_back(currPos);
+            gestureLength++;
+        }
+        else
+        {
+            // add data point for each marker in each hand
+            for (size_t i = 0; i < rh_markers.points.size(); ++i)
+            {
+                int curr_id = int(rh_markers.points[i].id);
 
-        // ROS_INFO("object is in: %g %g %g", curr_object_pos.x,
-        //                                         curr_object_pos.y,
-        //                                         curr_object_pos.z);
-        gesture->push_back(currPos);
-        gestureLength++;
+                currPos[0] = curr_id;
+                currPos[1] = rh_markers.points[i].pt.x;
+                currPos[2] = rh_markers.points[i].pt.y;
+                currPos[3] = rh_markers.points[i].pt.z;
+                gesture->push_back(currPos);
+            }
+            for (size_t i = 0; i < lh_markers.points.size(); ++i)
+            {
+                int curr_id = int(lh_markers.points[i].id);
+
+                currPos[0] = curr_id;
+                currPos[1] = lh_markers.points[i].pt.x;
+                currPos[2] = lh_markers.points[i].pt.y;
+                currPos[3] = lh_markers.points[i].pt.z;
+                gesture->push_back(currPos);
+
+            }
+            // set of up to 15 points of marker positions counts as one datapoint in the gesture
+            gestureLength++;
+        }
+
         r.sleep();
     }
     *gesture = preProcess(*gesture);
@@ -553,21 +586,55 @@ bool GestureRec::recordSample(GRT::TimeSeriesClassificationData &trainingData, G
     ros::Rate r(60);
     while(ros::ok() && waitForData() && gestureLength < 30)
     {
-        currPos[0] = curr_object_pos.x;
-        currPos[1] = curr_object_pos.y;
-        currPos[2] = curr_object_pos.z;
-
-        ROS_INFO("object is in: %g %g %g", curr_object_pos.x,
+        if (!use_phasespace)
+        {
+            currPos[0] = curr_object_pos.x;
+            currPos[1] = curr_object_pos.y;
+            currPos[2] = curr_object_pos.z;
+            ROS_INFO("object is in: %g %g %g", curr_object_pos.x,
                                                 curr_object_pos.y,
                                                 curr_object_pos.z);
-        gesture.push_back(currPos);
-        gestureLength++;
+            gesture.push_back(currPos);
+            gestureLength++;
+        }
+        else
+        {
+            // add data point for each marker in each hand
+            for (size_t i = 0; i < rh_markers.points.size(); ++i)
+            {
+                int curr_id = int(rh_markers.points[i].id);
+
+                currPos[0] = curr_id;
+                currPos[1] = rh_markers.points[i].pt.x;
+                currPos[2] = rh_markers.points[i].pt.y;
+                currPos[3] = rh_markers.points[i].pt.z;
+                ROS_INFO("object %d is in: %g %g %g", curr_id, rh_markers.points[i].pt.x,
+                                                rh_markers.points[i].pt.y,
+                                                rh_markers.points[i].pt.z);
+                gesture.push_back(currPos);
+            }
+            for (size_t i = 0; i < lh_markers.points.size(); ++i)
+            {
+                int curr_id = int(lh_markers.points[i].id);
+
+                currPos[0] = curr_id;
+                currPos[1] = lh_markers.points[i].pt.x;
+                currPos[2] = lh_markers.points[i].pt.y;
+                currPos[3] = lh_markers.points[i].pt.z;
+                ROS_INFO("object %d is in: %g %g %g", curr_id, lh_markers.points[i].pt.x,
+                                                lh_markers.points[i].pt.y,
+                                                lh_markers.points[i].pt.z);
+                gesture.push_back(currPos);
+
+            }
+            // set of up to 15 points of marker positions counts as one datapoint in the gesture
+            gestureLength++;
+        }
+
         r.sleep();
     }
 
     GRT::MatrixFloat processedGesture = preProcess(gesture);
-
-    GRT::VectorFloat processedGestureMean(processedGesture.getNumCols());
 
     trainingData.addSample( gestureLabel, processedGesture);
     setDisplayText("Sample Recorded");
@@ -594,11 +661,43 @@ bool GestureRec::recordSample(GRT::TimeSeriesClassificationData &trainingData, G
 
 GRT::MatrixFloat GestureRec::preProcess(GRT::MatrixFloat rawGesture)
 {
-    if (!rawGesture.znorm())
+    if (!use_phasespace)
     {
-        ROS_ERROR("Unable to normalize data.");
+        if (!rawGesture.znorm())
+        {
+            ROS_ERROR("Unable to normalize data.");
+        }
+        return rawGesture;
     }
-    return rawGesture;
+    else
+    {
+        // don't touch first column (marker ID)
+        GRT::UINT i, j = 0;
+        GRT::Float mean, std = 0;
+        for (i = 0; i<rawGesture.getNumRows(); i++)
+        {
+            mean = 0;
+            std = 0;
+            for (j = 1; j < rawGesture.getNumCols(); j++)
+            {
+                mean += rawGesture[i][j];
+            }
+            mean /= rawGesture.getNumCols();
+
+            for (j = 1; j < rawGesture.getNumCols(); j++)
+            {
+                std +=  (rawGesture[i][j]-mean) * (rawGesture[i][j]-mean);
+            }
+            std /= rawGesture.getNumCols();
+            std = sqrt(std);
+
+            for (j = 1; j < rawGesture.getNumCols(); j++)
+            {
+                rawGesture[i][j] = (rawGesture[i][j]-mean) / std;
+            }
+        }
+        return rawGesture;
+    }
 
 }
 
@@ -652,15 +751,51 @@ bool GestureRec::predictOnce(GRT::GestureRecognitionPipeline &pipeline, GRT::UIN
     ros::Rate r(60);
     while(ros::ok() && waitForData() && gestureLength < 30)
     {
-        currPos[0] = curr_object_pos.x;
-        currPos[1] = curr_object_pos.y;
-        currPos[2] = curr_object_pos.z;
-
-        ROS_INFO("object is in: %g %g %g", curr_object_pos.x,
+        if (!use_phasespace)
+        {
+            currPos[0] = curr_object_pos.x;
+            currPos[1] = curr_object_pos.y;
+            currPos[2] = curr_object_pos.z;
+            ROS_INFO("object is in: %g %g %g", curr_object_pos.x,
                                                 curr_object_pos.y,
                                                 curr_object_pos.z);
-        gesture.push_back(currPos);
-        gestureLength++;
+            gesture.push_back(currPos);
+            gestureLength++;
+        }
+        else
+        {
+            // add data point for each marker in each hand
+            for (size_t i = 0; i < rh_markers.points.size(); ++i)
+            {
+                int curr_id = int(rh_markers.points[i].id);
+
+                currPos[0] = curr_id;
+                currPos[1] = rh_markers.points[i].pt.x;
+                currPos[2] = rh_markers.points[i].pt.y;
+                currPos[3] = rh_markers.points[i].pt.z;
+                ROS_INFO("object %d is in: %g %g %g", curr_id, rh_markers.points[i].pt.x,
+                                                rh_markers.points[i].pt.y,
+                                                rh_markers.points[i].pt.z);
+                gesture.push_back(currPos);
+            }
+            for (size_t i = 0; i < lh_markers.points.size(); ++i)
+            {
+                int curr_id = int(lh_markers.points[i].id);
+
+                currPos[0] = curr_id;
+                currPos[1] = lh_markers.points[i].pt.x;
+                currPos[2] = lh_markers.points[i].pt.y;
+                currPos[3] = lh_markers.points[i].pt.z;
+                ROS_INFO("object %d is in: %g %g %g", curr_id, lh_markers.points[i].pt.x,
+                                                lh_markers.points[i].pt.y,
+                                                lh_markers.points[i].pt.z);
+                gesture.push_back(currPos);
+
+            }
+            // set of up to 15 points of marker positions counts as one datapoint in the gesture
+            gestureLength++;
+        }
+
         r.sleep();
     }
     setDisplayText("Sample recorded, running prediction");

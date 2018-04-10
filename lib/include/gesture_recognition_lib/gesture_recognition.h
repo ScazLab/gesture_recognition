@@ -107,6 +107,9 @@ private:
     cv::Scalar blue;
     cv::Scalar black;
 
+    // flag to use phasespace or not
+    bool use_phasespace;
+
     // phasespace subscriber
     ros::Subscriber ps_sub;
 
@@ -131,9 +134,18 @@ protected:
      */
     bool setUpTrainingData()
     {
-        trainingData.setNumDimensions(3);
-        trainingData.setDatasetName("TrainingData");
-        trainingData.setInfoText("A training data set for the gesture recognition system.");
+        if (!use_phasespace)
+        {
+            trainingData.setNumDimensions(3);
+            trainingData.setDatasetName("TrainingData");
+            trainingData.setInfoText("A training data set for the gesture recognition system.");
+        }
+        else
+        {
+            trainingData.setNumDimensions(4);
+            trainingData.setDatasetName("Phasespace TrainingData");
+            trainingData.setInfoText("A training dataset for the gesture recognition system using Phasespace marker data.");
+        }
 
         return true;
     }
