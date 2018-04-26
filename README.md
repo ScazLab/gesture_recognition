@@ -29,7 +29,25 @@ Example of predicting using the trained pipeline:
     `rosservice call /gesture_recognition/action_provider '{action: "predict", object_id: 19, class_label: 1}'`
     Once the pipeline has been trained, you can use `predict` to record a gesture just like with the `record` action and then use the trained pipeline to print the predicted class label of the gesture. When `predict_and_add` is true, the gesture recording will also be added to the current trainingData, and, if `filename` is specified, the updated training dataset will be saved to `filename`.
 
-Eventually, the `publishGestures()` function should be able to continuously watch for gestures and publish to `gesture_recognition/result` if it has found a gesture and its predicted class label.
+To predict gestures continuously in real time:
+    `rosservice call /gesture_recognition/action_provider '{action: "publish", object_id: -1}'`
+    Once the pipeline has been trained, you can use `publish` to begin continuous recognition of gestures. This example will use both phasespace gloves as the source of marker data. Ctrl-C in the terminal where the service was called to stop continuous gesture recognition. It may be useful to call `rosbag record` in another terminal to keep track of the gesture data found and recorded during continous recognition.
 
-TODO:
-* Continuous monitoring of gestures not fully implemented yet.
+Phasespace Gestures
+
+To use the pretrained gestures recorded with the Phasespace gloves, first launch the gesture recognition program, then train using the dataset stored at "largePsTestSet.csv" (stored in ~/.ros):
+`roslaunch gesture_recogntion gesture_recognition.launch`
+`rosservice call /gesture_recognition/action_provider '{action: "train", filename: "largePsTestSet.csv"}'`
+
+Now, you can use the example above to predict one gesture at a time (specify the filename to add to the recorded dataset), or use `rosservice call /gesture_recognition/action_provide '{action: "predict", object_id: -1}'` to begin continuous recognition of gestures. During continuous recognition, hold the gesture for several seconds to give the system time to record and recognize the motion.
+
+As of April 2018, the gestures in largePsTestSet.csv are:
+* 0: NULL (built in to GRT, do not record gestures of this class)
+* 1: STOP (two hands with forward stopping motion)
+* 2: RIGHT POINT (left hand neutral on workbench/at waist height, right hand pointing with index finger to right)
+* 3: LEFT POINT (right hand neutral on workbench/at waist height, left hand pointing with index finger to left)
+* 4: THUMBS UP (both hands)
+* 5: RIGHT BECKON (left hand neutral, right arm starting down and out, then moving up and back towards the body, as if calling someone from far away)
+* 6: LEFT BECKON (right hand neutral, left arm performing beckon described above)
+* 7: RIGHT STOP (left hand neutral, right hand moving out in stopping motion to right)
+* 8: LEFT STOP (right hand neutral, left hand moving out in stopping motion to left)

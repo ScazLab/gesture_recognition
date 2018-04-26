@@ -5,6 +5,7 @@
 
 #include <ros/ros.h>
 #include <ros/console.h>
+#include <rosbag/bag.h>
 #include <image_transport/image_transport.h>
 #include <cv_bridge/cv_bridge.h>
 #include <sensor_msgs/image_encodings.h>
@@ -142,11 +143,34 @@ protected:
         }
         else
         {
-            trainingData.setNumDimensions(4);
-            trainingData.setDatasetName("Phasespace TrainingData");
+            trainingData.setNumDimensions(3);
+            trainingData.setDatasetName("PhasespaceTrainingData");
             trainingData.setInfoText("A training dataset for the gesture recognition system using Phasespace marker data.");
         }
 
+        return true;
+    }
+
+    bool initMarkerArrays()
+    {
+        for (int i = 0; i < 8; i++)
+        {
+            phasespace_publisher::PhasespacePt pt;
+            pt.id = i;
+            pt.pt.x = 0.0;
+            pt.pt.y = 0.0;
+            pt.pt.z = 0.0;
+            rh_markers.points.push_back(pt);
+        }
+        for (int i = 8; i < 16; i++)
+        {
+            phasespace_publisher::PhasespacePt pt;
+            pt.id = i;
+            pt.pt.x = 0.0;
+            pt.pt.y = 0.0;
+            pt.pt.z = 0.0;
+            lh_markers.points.push_back(pt);
+        }
         return true;
     }
 

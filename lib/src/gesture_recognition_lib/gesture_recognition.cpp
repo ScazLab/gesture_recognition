@@ -10,6 +10,7 @@ GestureRec::GestureRec(string name, string limb) : PerceptionClientImpl(name, li
     service = nh.advertiseService(action_topic, &GestureRec::actionCb, this);
 
 
+    initMarkerArrays();
     // phasespace
     std::string ps_topic = "/ps_markers/phasespace_points";
     // ps_sub = nh.subscribe(ps_topic, 1000, &GestureRec::psMarkersCb, this);
@@ -53,6 +54,7 @@ GestureRec::GestureRec(string name, string limb) : PerceptionClientImpl(name, li
     im_w = 1024;
     im_w_delim = 8;
 
+    // continuous recognition
     rec_state.gesture_found = false;
     rec_state.predicted_class = 0;
     rec_state.expected_class = -1;
@@ -76,10 +78,6 @@ void GestureRec::PsObjectCb(const phasespace_publisher::PhasespacePtArray& marke
         available_objects.clear();
     }
 
-    // clear marker arrays
-    rh_markers = {};
-    lh_markers = {};
-
     for (size_t i = 0; i < markers.points.size(); ++i)
     {
         int curr_id = int(markers.points[i].id);
@@ -93,14 +91,14 @@ void GestureRec::PsObjectCb(const phasespace_publisher::PhasespacePtArray& marke
         {
             if (curr_id < 8)
             {
-                rh_markers.points.push_back(markers.points[i]);
+                rh_markers.points[curr_id] = markers.points[i];
                 if (!object_found) { object_found = true; }
 
             }
             else if (curr_id > 7 && curr_id < 16)
             {
 
-                lh_markers.points.push_back(markers.points[i]);
+                lh_markers.points[curr_id - 8] = markers.points[i];
                 if (!object_found) { object_found = true; }
             }
 
@@ -110,7 +108,7 @@ void GestureRec::PsObjectCb(const phasespace_publisher::PhasespacePtArray& marke
         {
             if (curr_id < 8)
             {
-                rh_markers.points.push_back(markers.points[i]);
+                rh_markers.points[curr_id] = markers.points[i];
                 if (!object_found) { object_found = true; }
 
             }
@@ -120,7 +118,7 @@ void GestureRec::PsObjectCb(const phasespace_publisher::PhasespacePtArray& marke
         {
             if (curr_id > 7 && curr_id < 16)
             {
-                lh_markers.points.push_back(markers.points[i]);
+                lh_markers.points[curr_id - 8] = markers.points[i];
                 if (!object_found) { object_found = true; }
 
             }
@@ -228,39 +226,51 @@ void GestureRec::displayRecState()
 
     if (pipeline.getTrained())
     {
-        // int classes = 4;
         int classes = trainingData.getNumClasses();
-        int spacing = 500 / classes;
-        // int bar_width;
+        int spacing = 500 / (classes+1);
         cv::Scalar color;
-        bool predicted_correctly = true;
-        // if (rec_state.expected_class != -1)
-        // {
-           // predicted_correctly = (rec_state.expected_class == rec_state.predicted_class);
-        // }
         if (spacing > 6)
         {
+            int max_dist = 0;
+            for (int i = 1; i <= classes; i++)
+            {
+                int distance = getClassDistance(i);
+                if (distance > max_dist)
+                {
+                    max_dist = distance;
+                }
+            }
             // bar_width = spacing - 5;
-            for (int i = 0; i < classes; i++)
+            for (int i = 0; i <= classes; i++)
             {
                 int x = 500 + i * spacing;
                 int y_start = 450;
                 int distance = getClassDistance(i);
                 ROS_INFO("Distance for class %d: %d", i, distance);
-                if (distance > 10)
+
+                // scale distances relative to max distance
+                // special case for null class (0) - distance is always 1e6 (scale to 10)
+                // unless null class was chosen (scale to 0)
+                if (distance == max_dist)
                 {
                     distance = 10;
                 }
+                else if (i == 0 && rec_state.predicted_class == 0)
+                {
+                    distance = 0;
+                }
+                else if (i == 0 && rec_state.predicted_class != 0)
+                {
+                    distance = 10;
+                }
+                else
+                {
+                    distance = distance * 10.0/max_dist;
+                }
+
                 int y_end = 250 + 20 * distance;
-                if (predicted_correctly && i == rec_state.predicted_class)
-                {
-                    color = green;
-                }
-                else if (!predicted_correctly && i == rec_state.predicted_class)
-                {
-                    color = yellow;
-                }
-                else if (!predicted_correctly && i == rec_state.expected_class)
+
+                if (i == rec_state.predicted_class)
                 {
                     color = green;
                 }
@@ -268,6 +278,11 @@ void GestureRec::displayRecState()
                 {
                     color = red;
                 }
+
+                // distance values indicate how close gesture was to DTW model for that class
+                // greater distance - less likely to be that class
+                // display "confidence" instead of distance
+                // greater distance -> lower confidence -> smaller rectangle (y_end is closer to y_start)
                 rectangle(res, cv::Point(x, y_start), cv::Point(x+50, y_end), color, -1);
                 putText(res, to_string(100 - 10*distance), cv::Point(x+5, y_end - 20), fontFace, fontScale/2, col, thickness, CV_AA);
                 putText(res, to_string(i), cv::Point(x+8, y_start + 55), fontFace, fontScale/1.25, col, thickness, CV_AA);
@@ -321,7 +336,7 @@ void GestureRec::gestureStateCb(const gesture_recognition::GestureState& msg)
     ROS_INFO("Called gestureStateCb");
     if (msg.publishing)
     {
-        // beginPublishThread();
+        beginPublishThread();
     }
 }
 
@@ -331,7 +346,6 @@ void GestureRec::beginPublishThread()
     {
         GRT::MatrixFloat gesture;
         beginRecording(&gesture);
-        // gesture.print();
         rec_timer = nh.createTimer(ros::Duration(0.5),
                                     boost::bind(&GestureRec::predictPublishCb, this, gesture), true);
         thread_timer = nh.createTimer(ros::Duration(0.5),
@@ -362,27 +376,20 @@ void GestureRec::beginRecording(GRT::MatrixFloat *gesture)
             // add data point for each marker in each hand
             for (size_t i = 0; i < rh_markers.points.size(); ++i)
             {
-                int curr_id = int(rh_markers.points[i].id);
-
-                currPos[0] = curr_id;
-                currPos[1] = rh_markers.points[i].pt.x;
-                currPos[2] = rh_markers.points[i].pt.y;
-                currPos[3] = rh_markers.points[i].pt.z;
+                currPos[0] = rh_markers.points[i].pt.x;
+                currPos[1] = rh_markers.points[i].pt.y;
+                currPos[2] = rh_markers.points[i].pt.z;
                 gesture->push_back(currPos);
             }
             for (size_t i = 0; i < lh_markers.points.size(); ++i)
             {
-                int curr_id = int(lh_markers.points[i].id);
-
-                currPos[0] = curr_id;
-                currPos[1] = lh_markers.points[i].pt.x;
-                currPos[2] = lh_markers.points[i].pt.y;
-                currPos[3] = lh_markers.points[i].pt.z;
+                currPos[0] = lh_markers.points[i].pt.x;
+                currPos[1] = lh_markers.points[i].pt.y;
+                currPos[2] = lh_markers.points[i].pt.z;
                 gesture->push_back(currPos);
 
             }
-            // set of up to 15 points of marker positions counts as one datapoint in the gesture
-            gestureLength++;
+            gestureLength += 2;
         }
 
         r.sleep();
@@ -419,7 +426,6 @@ bool GestureRec::setUpPipeline()
     // dtw.setOffsetTimeseriesUsingFirstSample(true);
 
     pipeline.setClassifier( dtw );
-    // pipeline.setClassifier( GRT::HMM() );
     return true;
 }
 
@@ -604,10 +610,9 @@ bool GestureRec::recordSample(GRT::TimeSeriesClassificationData &trainingData, G
             {
                 int curr_id = int(rh_markers.points[i].id);
 
-                currPos[0] = curr_id;
-                currPos[1] = rh_markers.points[i].pt.x;
-                currPos[2] = rh_markers.points[i].pt.y;
-                currPos[3] = rh_markers.points[i].pt.z;
+                currPos[0] = rh_markers.points[i].pt.x;
+                currPos[1] = rh_markers.points[i].pt.y;
+                currPos[2] = rh_markers.points[i].pt.z;
                 ROS_INFO("object %d is in: %g %g %g", curr_id, rh_markers.points[i].pt.x,
                                                 rh_markers.points[i].pt.y,
                                                 rh_markers.points[i].pt.z);
@@ -617,18 +622,16 @@ bool GestureRec::recordSample(GRT::TimeSeriesClassificationData &trainingData, G
             {
                 int curr_id = int(lh_markers.points[i].id);
 
-                currPos[0] = curr_id;
-                currPos[1] = lh_markers.points[i].pt.x;
-                currPos[2] = lh_markers.points[i].pt.y;
-                currPos[3] = lh_markers.points[i].pt.z;
+                currPos[0] = lh_markers.points[i].pt.x;
+                currPos[1] = lh_markers.points[i].pt.y;
+                currPos[2] = lh_markers.points[i].pt.z;
                 ROS_INFO("object %d is in: %g %g %g", curr_id, lh_markers.points[i].pt.x,
                                                 lh_markers.points[i].pt.y,
                                                 lh_markers.points[i].pt.z);
                 gesture.push_back(currPos);
 
             }
-            // set of up to 15 points of marker positions counts as one datapoint in the gesture
-            gestureLength++;
+            gestureLength+=2;
         }
 
         r.sleep();
@@ -661,44 +664,11 @@ bool GestureRec::recordSample(GRT::TimeSeriesClassificationData &trainingData, G
 
 GRT::MatrixFloat GestureRec::preProcess(GRT::MatrixFloat rawGesture)
 {
-    if (!use_phasespace)
+    if (!rawGesture.znorm())
     {
-        if (!rawGesture.znorm())
-        {
-            ROS_ERROR("Unable to normalize data.");
-        }
-        return rawGesture;
+        ROS_ERROR("Unable to normalize data.");
     }
-    else
-    {
-        // don't touch first column (marker ID)
-        GRT::UINT i, j = 0;
-        GRT::Float mean, std = 0;
-        for (i = 0; i<rawGesture.getNumRows(); i++)
-        {
-            mean = 0;
-            std = 0;
-            for (j = 1; j < rawGesture.getNumCols(); j++)
-            {
-                mean += rawGesture[i][j];
-            }
-            mean /= rawGesture.getNumCols();
-
-            for (j = 1; j < rawGesture.getNumCols(); j++)
-            {
-                std +=  (rawGesture[i][j]-mean) * (rawGesture[i][j]-mean);
-            }
-            std /= rawGesture.getNumCols();
-            std = sqrt(std);
-
-            for (j = 1; j < rawGesture.getNumCols(); j++)
-            {
-                rawGesture[i][j] = (rawGesture[i][j]-mean) / std;
-            }
-        }
-        return rawGesture;
-    }
-
+    return rawGesture;
 }
 
 
@@ -769,10 +739,9 @@ bool GestureRec::predictOnce(GRT::GestureRecognitionPipeline &pipeline, GRT::UIN
             {
                 int curr_id = int(rh_markers.points[i].id);
 
-                currPos[0] = curr_id;
-                currPos[1] = rh_markers.points[i].pt.x;
-                currPos[2] = rh_markers.points[i].pt.y;
-                currPos[3] = rh_markers.points[i].pt.z;
+                currPos[0] = rh_markers.points[i].pt.x;
+                currPos[1] = rh_markers.points[i].pt.y;
+                currPos[2] = rh_markers.points[i].pt.z;
                 ROS_INFO("object %d is in: %g %g %g", curr_id, rh_markers.points[i].pt.x,
                                                 rh_markers.points[i].pt.y,
                                                 rh_markers.points[i].pt.z);
@@ -782,18 +751,16 @@ bool GestureRec::predictOnce(GRT::GestureRecognitionPipeline &pipeline, GRT::UIN
             {
                 int curr_id = int(lh_markers.points[i].id);
 
-                currPos[0] = curr_id;
-                currPos[1] = lh_markers.points[i].pt.x;
-                currPos[2] = lh_markers.points[i].pt.y;
-                currPos[3] = lh_markers.points[i].pt.z;
+                currPos[0] = lh_markers.points[i].pt.x;
+                currPos[1] = lh_markers.points[i].pt.y;
+                currPos[2] = lh_markers.points[i].pt.z;
                 ROS_INFO("object %d is in: %g %g %g", curr_id, lh_markers.points[i].pt.x,
                                                 lh_markers.points[i].pt.y,
                                                 lh_markers.points[i].pt.z);
                 gesture.push_back(currPos);
 
             }
-            // set of up to 15 points of marker positions counts as one datapoint in the gesture
-            gestureLength++;
+            gestureLength+=2;
         }
 
         r.sleep();
