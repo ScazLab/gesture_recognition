@@ -16,6 +16,8 @@
 #include <robot_perception/perception_client_impl.h>
 #include <phasespace_publisher/PhasespacePt.h>
 #include <phasespace_publisher/PhasespacePtArray.h>
+#include <human_robot_collaboration_msgs/DoAction.h>
+
 
 #include <GRT/GRT.h>
 
@@ -120,12 +122,19 @@ private:
     // phasespace point array for left hand (8-15)
     phasespace_publisher::PhasespacePtArray lh_markers;
 
+    // action provider service clients
+    bool robot_demo;
+    ros::ServiceClient right_client;
+    ros::ServiceClient left_client;
+
 
 protected:
 
     int getClassDistance(int class_name);
 
     void displayText(cv::Mat& in);
+
+    void callAction(int predicted_class);
 
     void displayRecState();
 

@@ -1,0 +1,19 @@
+<launch>
+
+    <arg name="useRobot"            default="true"/>
+    <param name="gesture_recognition/use_robot" value="$arg(useRobot)"/>
+
+    <arg name="usePhasespace" default="True"/>
+    <param name="gesture_recognition/use_phasespace" value="$(arg usePhasespace)"/>
+
+    <arg name="robotDemo" default="True"/>
+    <param name="gesture_recognition/robot_demo" value="$(arg robotDemo)"/>
+
+    <node pkg="gesture_recognition" type="gesture_recognition_node" name="gesture_recognition" output="screen" respawn="true"></node>
+
+    <include file="$(find phasespace_publisher)/launch/phasespace_publisher.launch"/>
+
+    <include file="$(find hrc_speech_prediction)/launch/speech_prediction.launch"/>
+
+</launch>
+

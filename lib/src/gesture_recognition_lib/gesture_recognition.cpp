@@ -25,6 +25,9 @@ GestureRec::GestureRec(string name, string limb) : PerceptionClientImpl(name, li
         }
     }
 
+    robot_demo = false;
+    ros::param::get("/gesture_recognition/robot_demo", robot_demo);
+
     setUpTrainingData();
     setUpPipeline();
     setPredictAdd(true);
@@ -38,6 +41,8 @@ GestureRec::GestureRec(string name, string limb) : PerceptionClientImpl(name, li
     state_sub = nh.subscribe(state_topic, 1000, &GestureRec::gestureStateCb, this);
 
 
+    right_client = nh.serviceClient<human_robot_collaboration_msgs::DoAction>("/action_provider/service_right");
+    left_client = nh.serviceClient<human_robot_collaboration_msgs::DoAction>("/action_provider/service_left");
 
     // set this to the ARuco id desired
     // or, with phasespace, set to
@@ -328,8 +333,47 @@ void GestureRec::gestureRecCb(const gesture_recognition::RecState& msg)
     rec_state.gesture_found = msg.gesture_found;
     rec_state.predicted_class = msg.predicted_class;
     rec_state.expected_class = msg.expected_class;
+
+    if (robot_demo)
+    {
+        callAction(msg.predicted_class);
+    }
 }
 
+void GestureRec::callAction(int predicted_class)
+{
+    if (predicted_class == 2)
+    {
+        // RIGHT POINT
+        human_robot_collaboration_msgs::DoAction srv;
+        std::vector<short int> objects;
+        objects.push_back(155);
+        srv.request.action = "get_pass";
+        srv.request.objects = objects;
+        left_client.call(srv);
+    }
+    if (predicted_class == 3)
+    {
+        // LEFT POINT
+        human_robot_collaboration_msgs::DoAction srv;
+        std::vector<short int> objects;
+        objects.push_back(10);
+        srv.request.action = "get_pass";
+        srv.request.objects = objects;
+        right_client.call(srv);
+    }
+    if (predicted_class == 6)
+    {
+        // LEFT BECKON
+        human_robot_collaboration_msgs::DoAction srv;
+        std::vector<short int> objects;
+        objects.push_back(156);
+        srv.request.action = "hold_leg";
+        srv.request.objects = objects;
+        right_client.call(srv);
+    }
+
+}
 
 void GestureRec::gestureStateCb(const gesture_recognition::GestureState& msg)
 {

@@ -47,6 +47,9 @@
   <depend>rosconsole</depend>
   <depend>human_robot_collaboration</depend>
   <depend>phasespace_publisher</depend>
+  <depend>hrc_speech_prediction</depend>
+
+  <depend>human_robot_collaboration_msgs</depend>
 
   <build_depend>message_generation</build_depend>
   <exec_depend>message_runtime</exec_depend>

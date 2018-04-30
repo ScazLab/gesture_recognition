@@ -16,6 +16,8 @@ find_package(catkin REQUIRED COMPONENTS
              message_generation
              human_robot_collaboration
              phasespace_publisher
+             hrc_speech_prediction
+             human_robot_collaboration_msgs
              )
 
 ## System dependencies are found with CMake's conventions
@@ -75,6 +77,7 @@ add_service_files(
 generate_messages(
   DEPENDENCIES
   std_msgs  # Or other packages containing msgs
+  human_robot_collaboration_msgs
 )
 
 ################################################
