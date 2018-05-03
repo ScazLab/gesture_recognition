@@ -17,6 +17,7 @@
 #include <phasespace_publisher/PhasespacePt.h>
 #include <phasespace_publisher/PhasespacePtArray.h>
 #include <human_robot_collaboration_msgs/DoAction.h>
+#include <baxter_core_msgs/DigitalIOState.h>
 
 
 #include <GRT/GRT.h>
@@ -126,6 +127,10 @@ private:
     bool robot_demo;
     ros::ServiceClient right_client;
     ros::ServiceClient left_client;
+
+    ros::Publisher right_cuff_pub;
+    ros::Publisher right_up_cuff_pub;
+    ros::Publisher left_cuff_pub;
 
 
 protected:

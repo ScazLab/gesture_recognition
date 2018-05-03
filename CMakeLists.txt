@@ -18,6 +18,7 @@ find_package(catkin REQUIRED COMPONENTS
              phasespace_publisher
              hrc_speech_prediction
              human_robot_collaboration_msgs
+             baxter_core_msgs
              )
 
 ## System dependencies are found with CMake's conventions
@@ -78,6 +79,7 @@ generate_messages(
   DEPENDENCIES
   std_msgs  # Or other packages containing msgs
   human_robot_collaboration_msgs
+  baxter_core_msgs
 )
 
 ################################################

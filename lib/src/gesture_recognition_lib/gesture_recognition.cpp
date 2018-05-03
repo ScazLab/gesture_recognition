@@ -40,6 +40,14 @@ GestureRec::GestureRec(string name, string limb) : PerceptionClientImpl(name, li
     state_pub = nh.advertise<gesture_recognition::GestureState>(state_topic, 1000);
     state_sub = nh.subscribe(state_topic, 1000, &GestureRec::gestureStateCb, this);
 
+    std::string right_lower_cuff_topic = "/robot/digital_io/right_lower_button/state";
+    right_cuff_pub = nh.advertise<baxter_core_msgs::DigitalIOState>(right_lower_cuff_topic, 1000);
+
+    std::string right_upper_cuff_topic = "/robot/digital_io/right_upper_button/state";
+    right_up_cuff_pub = nh.advertise<baxter_core_msgs::DigitalIOState>(right_upper_cuff_topic, 1000);
+
+    std::string left_lower_cuff_topic = "/robot/digital_io/left_lower_button/state";
+    left_cuff_pub = nh.advertise<baxter_core_msgs::DigitalIOState>(left_lower_cuff_topic, 1000);
 
     right_client = nh.serviceClient<human_robot_collaboration_msgs::DoAction>("/action_provider/service_right");
     left_client = nh.serviceClient<human_robot_collaboration_msgs::DoAction>("/action_provider/service_left");
@@ -340,39 +348,60 @@ void GestureRec::gestureRecCb(const gesture_recognition::RecState& msg)
     }
 }
 
+// for demos / using gestures to call actions on the robot
 void GestureRec::callAction(int predicted_class)
 {
-    if (predicted_class == 2)
+    int dist = getClassDistance(predicted_class);
+    if (dist < 30)
     {
-        // RIGHT POINT
-        human_robot_collaboration_msgs::DoAction srv;
-        std::vector<short int> objects;
-        objects.push_back(155);
-        srv.request.action = "get_pass";
-        srv.request.objects = objects;
-        left_client.call(srv);
-    }
-    if (predicted_class == 3)
-    {
-        // LEFT POINT
-        human_robot_collaboration_msgs::DoAction srv;
-        std::vector<short int> objects;
-        objects.push_back(10);
-        srv.request.action = "get_pass";
-        srv.request.objects = objects;
-        right_client.call(srv);
-    }
-    if (predicted_class == 6)
-    {
-        // LEFT BECKON
-        human_robot_collaboration_msgs::DoAction srv;
-        std::vector<short int> objects;
-        objects.push_back(156);
-        srv.request.action = "hold_leg";
-        srv.request.objects = objects;
-        right_client.call(srv);
-    }
+        if (predicted_class == 2)
+        {
+            // RIGHT POINT
+            human_robot_collaboration_msgs::DoAction srv;
+            std::vector<short int> objects;
+            objects.push_back(155);
+            srv.request.action = "get_pass";
+            srv.request.objects = objects;
+            left_client.call(srv);
+        }
+        if (predicted_class == 3)
+        {
+            // LEFT POINT
+            human_robot_collaboration_msgs::DoAction srv;
+            std::vector<short int> objects;
+            objects.push_back(10);
+            srv.request.action = "get_pass";
+            srv.request.objects = objects;
+            right_client.call(srv);
+        }
+        if (predicted_class == 6)
+        {
+            // LEFT BECKON
+            human_robot_collaboration_msgs::DoAction srv;
+            std::vector<short int> objects;
+            objects.push_back(156);
+            srv.request.action = "hold_leg";
+            srv.request.objects = objects;
+            right_client.call(srv);
+        }
+        if (predicted_class == 8)
+        {
+            // LEFT STOP
+            baxter_core_msgs::DigitalIOState msg;
+            msg.state = 1;
+            right_up_cuff_pub.publish(msg);
 
+        }
+        if (predicted_class == 1)
+        {
+            // ALL STOP
+            baxter_core_msgs::DigitalIOState msg;
+            msg.state = 1;
+            right_cuff_pub.publish(msg);
+            left_cuff_pub.publish(msg);
+
+        }
+    }
 }
 
 void GestureRec::gestureStateCb(const gesture_recognition::GestureState& msg)

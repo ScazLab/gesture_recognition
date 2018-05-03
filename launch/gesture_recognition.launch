@@ -20,6 +20,9 @@
         <remap from="camera_info" to="/cameras/left_hand_camera/camera_info"/>
     </node>
 
+    <arg name="robotDemo" default="False"/>
+    <param name="gesture_recognition/robot_demo" value="$(arg robotDemo)"/>
+
     <arg name="useRobot"            default="true"/>
     <param name="gesture_recognition/use_robot" value="$arg(useRobot)"/>
 

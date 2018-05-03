@@ -51,3 +51,16 @@ As of April 2018, the gestures in largePsTestSet.csv are:
 * 6: LEFT BECKON (right hand neutral, left arm performing beckon described above)
 * 7: RIGHT STOP (left hand neutral, right hand moving out in stopping motion to right)
 * 8: LEFT STOP (right hand neutral, left hand moving out in stopping motion to left)
+
+Demo
+
+To use gestures to call specific actions (get, pass, hold, etc) on the robot, modify the `callAction()` function in `gesture_recognition.cpp`. As of May 2018, the gesture -> action mapping is:
+* RIGHT POINT (class label 2) -> LEFT ARM GET_PASS object 155 (one of the modular furniture legs)
+* LEFT POINT (class label 3) -> RIGHT ARM GET_PASS object 10 (one of the green modular furniture brackets)
+* LEFT BECKON (class label 6) -> RIGHT ARM HOLD
+* LEFT STOP (class label 8) -> RIGHT ARM OK/FINISHED (simulates pressing green/longer cuff button to signal completion of an action)
+* ALL STOP (class label 1) -> RIGHT & LEFT ARM ERROR (simulates pressing red/round cuff button to signal the robot has made an error)
+
+This is easily modifiable to call different actions on different arms or simulate different button presses. To run a demo with the actions described above, simply do `roslaunch gesture_recognition gesture_rec_demo.launch`. You will need to train the Gesture Rec system (`rosservice call /gesture_recognition/action_provider '{action: "train", filename: "largePsTestSet.csv"}'`) and then start publishing real-time gesture recognition (`rosservice call /gesture_recognition/action_provide '{action: "predict", object_id: -1}'`) before you begin making gestures.
+
+Contact [Sarah Widder](sarah.widder@yale.edu) with any questions.

@@ -48,7 +48,7 @@
   <depend>human_robot_collaboration</depend>
   <depend>phasespace_publisher</depend>
   <depend>hrc_speech_prediction</depend>
-
+  <depend>baxter_core_msgs</depend>
   <depend>human_robot_collaboration_msgs</depend>
 
   <build_depend>message_generation</build_depend>
